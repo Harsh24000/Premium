@@ -6,6 +6,17 @@ import type { SmartReport, SubmitReportResponse } from "./types";
 // https://niroggyan-premium-api.onrender.com) as a build-time env var.
 const BASE = `${import.meta.env.VITE_API_BASE ?? ""}/api`;
 
+export async function submitReportPdf(file: File): Promise<SubmitReportResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/report/upload`, { method: "POST", body: form });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function submitReport(report: SmartReport): Promise<SubmitReportResponse> {
   const res = await fetch(`${BASE}/report`, {
     method: "POST",
