@@ -18,8 +18,8 @@ app = FastAPI(title="NirogGyan Premium API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,  # set ALLOWED_ORIGINS env var to your deployed frontend URL
+    allow_credentials=False,  # no cookie-based auth here — this also avoids the wildcard+credentials CORS conflict
     allow_methods=["*"],
     allow_headers=["*"],
 )
