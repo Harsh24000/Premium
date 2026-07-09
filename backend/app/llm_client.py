@@ -9,7 +9,22 @@ from .models import SmartReport
 from .store import Session
 
 _settings = get_settings()
-_client = groq.Groq(api_key=_settings.groq_api_key or None)
+_client: groq.Groq | None = None
+
+
+def _get_client() -> groq.Groq:
+    """
+    Lazy singleton. Creating groq.Groq(api_key=...) at MODULE IMPORT TIME
+    (the previous version) means a missing/bad GROQ_API_KEY crashes the
+    entire app on startup with 'Exited with status 1' — every request
+    fails, including ones that don't even need the LLM. Deferring
+    creation to first actual use means the app boots fine either way,
+    and only the specific request that needs Groq fails cleanly.
+    """
+    global _client
+    if _client is None:
+        _client = groq.Groq(api_key=_settings.groq_api_key or None)
+    return _client
 
 
 def extract_smart_report_from_text(report_text: str) -> dict:
@@ -19,7 +34,7 @@ def extract_smart_report_from_text(report_text: str) -> dict:
     extraction still produces a valid, honest SmartReport rather than a
     fabricated-looking complete one.
     """
-    response = _client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=_settings.chat_model,
         temperature=0.1,
         max_tokens=8000,
@@ -109,7 +124,7 @@ def build_chat_system(report: SmartReport) -> str:
 
 
 def _call_groq_json(system: str, user: str, max_tokens: int = 600) -> dict:
-    response = _client.chat.completions.create(
+    response = _get_client().chat.completions.create(
         model=_settings.chat_model,
         temperature=0.3,
         max_tokens=max_tokens,
@@ -156,7 +171,7 @@ def stream_chat(session: Session, user_message: str) -> Iterator[str]:
     messages = [{"role": "system", "content": system}] + history + [{"role": "user", "content": user_message}]
 
     try:
-        stream = _client.chat.completions.create(
+        stream = _get_client().chat.completions.create(
             model=_settings.chat_model,
             messages=messages,
             stream=True,
