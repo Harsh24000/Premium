@@ -1,0 +1,216 @@
+{
+  "patient": {
+    "name": "Mr. AMAN",
+    "age": 20.0,
+    "gender": "Male",
+    "accession_no": "LOSHHI287091",
+    "date_of_test": "2026-03-12"
+  },
+  "wellness": {
+    "score": 78,
+    "label": "Good",
+    "descriptor": "Minor issues that require attention",
+    "greeting": "Dear Mr. AMAN, Well done! Most of your health markers are within normal limits. You have a Good Wellness Score",
+    "critical_alert": "BUN (7.94) is Low — please seek medical advice",
+    "follow_up_required": "No follow-up actions required at this time.",
+    "dietary_recommendation": "Aim for a balanced diet with 30% Protein / 40% Fat / 30% Carb",
+    "lifestyle_recommendation": "Don't just track BMI. Track waist-to-hip ratio (<0.9 for men, <0.8 for women)",
+    "score_breakdown": [
+      { "name": "cardiovascular", "score": null },
+      { "name": "metabolic", "score": null },
+      { "name": "inflammatory", "score": null },
+      { "name": "nutritional", "score": null },
+      { "name": "liver", "score": null },
+      { "name": "kidney", "score": null },
+      { "name": "thyroid", "score": null },
+      { "name": "hematological", "score": null },
+      { "name": "hormonal", "score": null }
+    ],
+    "symptoms_to_watch": [
+      "No significant symptoms identified based on your current report.",
+      "Continue maintaining a healthy lifestyle and attend routine checkups."
+    ],
+    "next_steps": [
+      "Routine annual health checkups.",
+      "Biological age test.",
+      "VO2 max assessment for cardio respiratory fitness."
+    ]
+  },
+  "health_summary_index": {
+    "abnormal_count": 16,
+    "borderline_count": 0,
+    "normal_count": 28
+  },
+  "body_summary": [
+    {
+      "panel_name": "COMPLETE HEMOGRAM",
+      "status": "watch_out",
+      "key_parameters": ["Haemoglobin (Hb): 11.0 [Low]", "TLC: 13.0 [High]", "Packed Cell Volume: 35.5 [Low]"]
+    },
+    {
+      "panel_name": "KIDNEY FUNCTION TEST (KFT)",
+      "status": "watch_out",
+      "key_parameters": ["Chloride: 97.0 [Low]", "Sodium, Serum: 132.0 [Low]", "Urea, Serum: 17.0 [Low]"]
+    },
+    {
+      "panel_name": "LIVER FUNCTION TEST (LFT)",
+      "status": "watch_out",
+      "key_parameters": ["Globulin: 4.1 [High]", "A/G Ratio: 0.88 [Low]"]
+    }
+  ],
+  "panels": [
+    {
+      "name": "KIDNEY FUNCTION TEST (KFT)",
+      "intro": "This panel checks the health status of your kidneys. Kidneys filter waste from your blood and produce urine. Healthy kidneys also maintain proper dilution of your blood and maintain electrolyte balance of your body.",
+      "out_of_range": 5,
+      "total_tests": 10,
+      "parameters": [
+        {
+          "name": "Chloride",
+          "value": "97.0",
+          "unit": "mmol/L",
+          "status": "low",
+          "range_low": 98,
+          "range_high": 109,
+          "explanation": "Chloride helps transport fluids in/out of your cells. It's also an essential component of digestive juices.",
+          "common_reasons": ["Lung diseases.", "Addison's disease - a condition in which your body's adrenal glands don't produce enough of certain types of hormones."]
+        },
+        {
+          "name": "Sodium, Serum",
+          "value": "132.0",
+          "unit": "mmol/L",
+          "status": "low",
+          "range_low": 137,
+          "range_high": 145,
+          "explanation": "Sodium plays a key role in your body. It helps maintain normal blood pressure, supports the work of your nerves and muscles, and regulates your body's fluid balance.",
+          "common_reasons": ["Diarrhea and vomiting.", "Kidney disease."]
+        },
+        {
+          "name": "Blood Urea Nitrogen (BUN)",
+          "value": "7.94",
+          "unit": "mg/dL",
+          "status": "low",
+          "range_low": 9,
+          "range_high": 20,
+          "explanation": "This test measures the amount of urea nitrogen in your blood. BUN is the waste product generated from protein breakdown.",
+          "common_reasons": ["Dehydration", "A high protein diet", "Use of some medicines"]
+        },
+        {
+          "name": "Creatinine, Serum",
+          "value": "0.6",
+          "unit": "mg/dL",
+          "status": "low",
+          "range_low": 0.66,
+          "range_high": 1.25,
+          "explanation": "Creatinine is a waste product that comes from normal activity of your muscles. Kidneys filter out creatinine from your blood and produce urine."
+        }
+      ],
+      "panel_diet_tips": [
+        "Check your blood pressure and glucose levels regularly - High BP and high glucose for a long period of time can damage your kidneys.",
+        "Avoid dehydration - Drinking plenty of water helps flush toxins and bacteria from your bladder.",
+        "Take a healthy diet - Limit consumption of processed food and animal products especially red meat.",
+        "Moderate exercise should be part of your routine - Exercise will help lower your blood pressure."
+      ]
+    },
+    {
+      "name": "LIVER FUNCTION TEST (LFT)",
+      "intro": "Liver performs a variety of functions including detoxification of various metabolites and production of digestive enzymes.",
+      "out_of_range": 2,
+      "total_tests": 11,
+      "parameters": [
+        {
+          "name": "Globulin",
+          "value": "4.1",
+          "unit": "g/dL",
+          "status": "high",
+          "range_low": 2,
+          "range_high": 3.5,
+          "explanation": "Globulin is a group of proteins mainly produced by your liver. It plays many important roles in your body, especially in the immune system."
+        },
+        {
+          "name": "A/G Ratio",
+          "value": "0.88",
+          "unit": "Ratio",
+          "status": "low",
+          "range_low": 1,
+          "range_high": 2.3,
+          "explanation": "A/G ratio is the comparison of the amount of albumin in your blood serum with the amount of globulin."
+        }
+      ],
+      "panel_diet_tips": [
+        "Avoid excess alcohol - Chronic excessive alcohol consumption leads to fat deposition in your liver cells.",
+        "Eat a healthy diet and maintain a healthy weight to prevent any type of fatty liver disease.",
+        "Two or more serves of oily fish per week has a beneficial effect on lipid profile."
+      ]
+    },
+    {
+      "name": "COMPLETE HEMOGRAM",
+      "intro": "Blood count checks the number and types of cells in your blood. This helps doctors check your overall health and helps diagnose conditions such as anemia, infections, clotting problems, blood cancers, and immune system disorders.",
+      "out_of_range": 9,
+      "total_tests": 25,
+      "parameters": [
+        {
+          "name": "Haemoglobin (Hb)",
+          "value": "11.0",
+          "unit": "g/dl",
+          "status": "low",
+          "range_low": 13,
+          "range_high": 17,
+          "explanation": "Haemoglobin is an oxygen binding protein in your RBCs."
+        },
+        {
+          "name": "TLC (Total Leucocyte Count)",
+          "value": "13.0",
+          "unit": "10³/mm³",
+          "status": "high",
+          "range_low": 4,
+          "range_high": 10,
+          "explanation": "It measures the total number of WBCs in your blood. WBCs are part of your immune system.",
+          "common_reasons": ["Infection and Inflammation.", "Allergies", "Injuries and Burns", "Cigarette smoking.", "Reaction to medicines", "Cancers"]
+        },
+        {
+          "name": "Lymphocyte",
+          "value": "15",
+          "unit": "%",
+          "status": "low",
+          "range_low": 20,
+          "range_high": 40,
+          "explanation": "Lymphocytes are a type of WBCs that have an important role in your immune system.",
+          "common_reasons": ["Immune deficiency.", "Zinc deficiency.", "Corticosteroid treatment, Radiotherapy and chemotherapy."]
+        }
+      ]
+    }
+  ],
+  "diet_plan": {
+    "plan_name": "Longevity & wellness diet",
+    "rationale": "Reduce oxidative stress and glycation",
+    "avoid": [
+      { "name": "Advanced Glycation End Products (AGEs)", "description": "Deep-fried foods and charred meats which accelerate aging." },
+      { "name": "Ultra-Processed Foods (UPFs)", "description": "Processed meats, fruit drinks, chips and instant ramen that disrupt gut barrier." },
+      { "name": "Refined Sugars", "description": "Fizzy drinks, soda, ketchup, cakes and cookies to prevent insulin spikes." }
+    ],
+    "include": [
+      { "name": "Polyphenol-Rich Longevity Foods", "description": "Blueberries, extra virgin olive oil and high-quality green tea." },
+      { "name": "Cruciferous Vegetables", "description": "Broccoli and sprouts to trigger cellular detoxification." },
+      { "name": "Fermented Foods for Gut Health", "description": "Probiotic yogurt, millet dosa, idli and pesarattu to support gut microbiome." }
+    ],
+    "bonus_tips": [
+      "Support hormone and prostate health using cooked tomatoes (lycopene) and pumpkin seeds (zinc).",
+      "Include HIIT and diverse plant fibers like guava, beetroot and cluster beans."
+    ]
+  },
+  "isolated_abnormalities": [
+    {
+      "panel_name": "COMPLETE HEMOGRAM",
+      "parameter_name": "Total Leukocyte Count",
+      "explanation": "Often a single parameter being abnormal is not a cause of concern, it might be due to diet, stress, and other related factors. Check for symptoms, follow the recommendation and go for repeat testing after 4-6 weeks",
+      "common_symptoms": ["Sore throat", "Fever", "Recurring infection"],
+      "next_steps": ["Repeat, differential count."],
+      "recommended_tests": [
+        { "label": "Infection screen" },
+        { "label": "Autoimmune workup" },
+        { "label": "Hematology consult" }
+      ]
+    }
+  ]
+}
