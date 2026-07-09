@@ -4,11 +4,32 @@ from collections.abc import Iterator
 import groq
 
 from .config import get_settings
+from .extraction_prompt import EXTRACTION_SYSTEM
 from .models import SmartReport
 from .store import Session
 
 _settings = get_settings()
 _client = groq.Groq(api_key=_settings.groq_api_key or None)
+
+
+def extract_smart_report_from_text(report_text: str) -> dict:
+    """
+    Best-effort extraction of the SmartReport structure from raw PDF text.
+    Since the schema itself makes most fields nullable, an incomplete
+    extraction still produces a valid, honest SmartReport rather than a
+    fabricated-looking complete one.
+    """
+    response = _client.chat.completions.create(
+        model=_settings.chat_model,
+        temperature=0.1,
+        max_tokens=8000,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": EXTRACTION_SYSTEM},
+            {"role": "user", "content": report_text},
+        ],
+    )
+    return json.loads(response.choices[0].message.content)
 
 
 def _report_context_block(report: SmartReport) -> str:
