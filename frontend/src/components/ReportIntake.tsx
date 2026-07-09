@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { submitReport, fetchMockReport } from "../api";
+import { submitReportPdf, submitReport, fetchMockReport } from "../api";
 import type { SmartReport, SubmitReportResponse } from "../types";
 
 interface Props {
@@ -11,7 +11,23 @@ export default function ReportIntake({ onReady }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function handleSubmit(report: SmartReport) {
+  async function handleFile(file: File) {
+    setError(null);
+    setLoading(true);
+    try {
+      // Extraction from a real report can take a little longer than a
+      // simple upload — the button below reflects that with different
+      // loading text.
+      const result = await submitReportPdf(file);
+      onReady(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmitJson(report: SmartReport) {
     setError(null);
     setLoading(true);
     try {
@@ -24,22 +40,12 @@ export default function ReportIntake({ onReady }: Props) {
     }
   }
 
-  async function handleFile(file: File) {
-    try {
-      const text = await file.text();
-      const report = JSON.parse(text) as SmartReport;
-      await handleSubmit(report);
-    } catch {
-      setError("Couldn't read that file — expecting a smart report JSON.");
-    }
-  }
-
   async function useMockReport() {
     setError(null);
     setLoading(true);
     try {
       const report = await fetchMockReport();
-      await handleSubmit(report);
+      await handleSubmitJson(report);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load mock report.");
       setLoading(false);
@@ -69,12 +75,12 @@ export default function ReportIntake({ onReady }: Props) {
             marginBottom: "0.75rem",
           }}
         >
-          {loading ? "Loading…" : "Tap to upload your Smart Report (JSON)"}
+          {loading ? "Reading your report…" : "Tap to upload your Smart Report (PDF)"}
         </div>
         <input
           ref={inputRef}
           type="file"
-          accept="application/json"
+          accept="application/pdf"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
