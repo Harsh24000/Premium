@@ -1,6 +1,10 @@
 import type { SmartReport, SubmitReportResponse } from "./types";
 
-const BASE = "/api";
+// In dev, Vite's proxy (vite.config.ts) forwards /api to localhost:8000, so
+// leaving this empty works locally. In production on Render, set
+// VITE_API_BASE to your deployed backend's URL (e.g.
+// https://niroggyan-premium-api.onrender.com) as a build-time env var.
+const BASE = `${import.meta.env.VITE_API_BASE ?? ""}/api`;
 
 export async function submitReport(report: SmartReport): Promise<SubmitReportResponse> {
   const res = await fetch(`${BASE}/report`, {
