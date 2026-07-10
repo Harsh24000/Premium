@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from .config import get_settings
 from .infographic import build_infographic_summary
 from .llm_client import extract_smart_report_from_text, generate_high_risk_starter_questions, stream_chat
-from .models import SmartReport
+from .models import SmartReport, safe_parse_smart_report
 from .pdf_utils import PdfExtractionError, extract_text_from_pdf
 from .store import Session, get_session, save_session
 
@@ -96,7 +96,7 @@ async def upload_report_pdf(file: UploadFile = File(...)) -> SubmitReportRespons
         raise HTTPException(502, f"Extraction failed: {exc}") from exc
 
     try:
-        report = SmartReport(**extracted)
+        report = safe_parse_smart_report(extracted)
     except pydantic.ValidationError as exc:
         # Surface the real validation error — this tells you exactly which
         # field the extraction got wrong, instead of a generic failure.
