@@ -6,6 +6,7 @@ import groq
 from .config import get_settings
 from .extraction_prompt import EXTRACTION_SYSTEM
 from .models import SmartReport
+from .pdf_utils import compact_for_extraction
 from .store import Session
 
 _settings = get_settings()
@@ -13,14 +14,9 @@ _client: groq.Groq | None = None
 
 
 def _get_client() -> groq.Groq:
-    """
-    Lazy singleton. Creating groq.Groq(api_key=...) at MODULE IMPORT TIME
-    (the previous version) means a missing/bad GROQ_API_KEY crashes the
-    entire app on startup with 'Exited with status 1' — every request
-    fails, including ones that don't even need the LLM. Deferring
-    creation to first actual use means the app boots fine either way,
-    and only the specific request that needs Groq fails cleanly.
-    """
+    """Lazy singleton — creating the client at import time means a missing
+    key crashes the whole app on boot instead of just the request that
+    needed it."""
     global _client
     if _client is None:
         _client = groq.Groq(api_key=_settings.groq_api_key or None)
@@ -33,18 +29,40 @@ def extract_smart_report_from_text(report_text: str) -> dict:
     Since the schema itself makes most fields nullable, an incomplete
     extraction still produces a valid, honest SmartReport rather than a
     fabricated-looking complete one.
+
+    Compacts input aggressively first (see pdf_utils.compact_for_extraction)
+    to fit small-account Groq TPM limits (some accounts are capped at 8000
+    tokens/minute for this model — a full 21-page report's raw text alone
+    can exceed that). If it still hits a rate/size limit, retries once with
+    a harder truncation before giving up with a clear error.
     """
-    response = _get_client().chat.completions.create(
-        model=_settings.chat_model,
-        temperature=0.1,
-        max_tokens=8000,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": EXTRACTION_SYSTEM},
-            {"role": "user", "content": report_text},
-        ],
-    )
-    return json.loads(response.choices[0].message.content)
+    compacted = compact_for_extraction(report_text)
+
+    last_error: Exception | None = None
+    for attempt, (text, max_tokens) in enumerate([
+        (compacted, 3500),
+        (compacted[:6000], 2500),  # fallback: harder truncation if still too large
+    ]):
+        try:
+            response = _get_client().chat.completions.create(
+                model=_settings.chat_model,
+                temperature=0.1,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": EXTRACTION_SYSTEM},
+                    {"role": "user", "content": text},
+                ],
+            )
+            return json.loads(response.choices[0].message.content)
+        except groq.APIStatusError as e:
+            last_error = e
+            is_rate_or_size = e.status_code in (413, 429)
+            if is_rate_or_size and attempt == 0:
+                continue  # retry once with the harder-truncated fallback
+            raise
+
+    raise last_error  # pragma: no cover — unreachable, satisfies type checkers
 
 
 def _report_context_block(report: SmartReport) -> str:
