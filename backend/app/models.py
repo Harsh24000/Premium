@@ -11,15 +11,15 @@ built on top of it.
 """
 
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PatientInfo(BaseModel):
-    name: str
-    age: float
-    gender: str
-    accession_no: str
-    date_of_test: str
+    name: str  # kept required — without this, personalization/greeting can't work meaningfully
+    age: float = 0
+    gender: str = ""
+    accession_no: str = ""
+    date_of_test: str = ""
 
 
 class ScoreBreakdownCategory(BaseModel):
@@ -35,15 +35,15 @@ class ScoreBreakdownCategory(BaseModel):
 
 
 class WellnessSummary(BaseModel):
-    score: int  # 0-100
+    score: int = 0  # 0-100 — kept as the core visual, defaults to 0 rather than crashing
     # Poor <50, Suboptimal 51-60, Fair 61-69, Good 70-90, Optimal >90
-    label: Literal["Poor", "Suboptimal", "Fair", "Good", "Optimal"]
-    descriptor: str  # e.g. "Minor issues that require attention"
-    greeting: str  # e.g. "Dear Mr. AMAN, Well done! Most of your health markers..."
+    label: Literal["Poor", "Suboptimal", "Fair", "Good", "Optimal"] = "Fair"
+    descriptor: str = ""  # e.g. "Minor issues that require attention"
+    greeting: str = ""  # e.g. "Dear Mr. AMAN, Well done! Most of your health markers..."
     critical_alert: str | None = None  # e.g. "BUN (7.94) is Low — please seek medical advice"
-    follow_up_required: str  # e.g. "No follow-up actions required at this time."
-    dietary_recommendation: str
-    lifestyle_recommendation: str
+    follow_up_required: str = ""  # e.g. "No follow-up actions required at this time."
+    dietary_recommendation: str = ""
+    lifestyle_recommendation: str = ""
     score_breakdown: list[ScoreBreakdownCategory] = []
     symptoms_to_watch: list[str] = []
     next_steps: list[str] = []
@@ -120,8 +120,60 @@ class HealthSummaryIndex(BaseModel):
 class SmartReport(BaseModel):
     patient: PatientInfo
     wellness: WellnessSummary
-    health_summary_index: HealthSummaryIndex
+    health_summary_index: HealthSummaryIndex = Field(default_factory=HealthSummaryIndex)
     body_summary: list[BodySummaryHighlight] = []
     panels: list[Panel] = []
     diet_plan: DietPlan | None = None
     isolated_abnormalities: list[IsolatedAbnormality] | None = None
+
+
+def safe_parse_smart_report(data: dict) -> SmartReport:
+    """
+    Defensive construction for LLM-extracted data.
+
+    Model-level defaults (above) only cover a KEY being entirely absent.
+    They don't help when a key is present but one item inside it is
+    malformed — e.g. a single panel missing its own required sub-field
+    still fails pydantic validation for the WHOLE `panels` list, not just
+    that one panel, because that's how nested list validation works.
+
+    This is the actual fix for "the LLM's output varies across reports":
+    validate each list item individually and silently drop only the ones
+    that don't parse, instead of one bad item invalidating the entire
+    report. No fields are ever fabricated here — a dropped item is simply
+    missing from the result, same as if the LLM had never mentioned it.
+    """
+    import copy
+    data = copy.deepcopy(data)
+
+    def _filter_valid(items: list, model_cls: type[BaseModel]) -> list[dict]:
+        valid = []
+        for item in items or []:
+            try:
+                valid.append(model_cls(**item).model_dump())
+            except Exception:
+                continue  # drop this one item, keep the rest
+        return valid
+
+    data["panels"] = _filter_valid(data.get("panels"), Panel)
+    for panel in data["panels"]:
+        panel["parameters"] = _filter_valid(panel.get("parameters"), Parameter)
+
+    data["body_summary"] = _filter_valid(data.get("body_summary"), BodySummaryHighlight)
+
+    if data.get("isolated_abnormalities") is not None:
+        filtered = _filter_valid(data["isolated_abnormalities"], IsolatedAbnormality)
+        data["isolated_abnormalities"] = filtered or None
+
+    if data.get("diet_plan") is not None:
+        try:
+            DietPlan(**data["diet_plan"])
+        except Exception:
+            data["diet_plan"] = None
+
+    if isinstance(data.get("wellness"), dict):
+        data["wellness"]["score_breakdown"] = _filter_valid(
+            data["wellness"].get("score_breakdown"), ScoreBreakdownCategory
+        )
+
+    return SmartReport(**data)
