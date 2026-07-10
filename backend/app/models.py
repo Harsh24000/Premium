@@ -44,9 +44,9 @@ class WellnessSummary(BaseModel):
     follow_up_required: str  # e.g. "No follow-up actions required at this time."
     dietary_recommendation: str
     lifestyle_recommendation: str
-    score_breakdown: list[ScoreBreakdownCategory]
-    symptoms_to_watch: list[str]
-    next_steps: list[str]
+    score_breakdown: list[ScoreBreakdownCategory] = []
+    symptoms_to_watch: list[str] = []
+    next_steps: list[str] = []
 
 
 class HistoricalPoint(BaseModel):
@@ -73,7 +73,7 @@ class Panel(BaseModel):
     intro: str | None = None  # panel-level explainer paragraph
     out_of_range: int
     total_tests: int
-    parameters: list[Parameter]
+    parameters: list[Parameter] = []
     panel_diet_tips: list[str] | None = None  # panel-specific tips, distinct from the overall diet plan
 
 
@@ -82,7 +82,7 @@ class BodySummaryHighlight(BaseModel):
     # findings (plus any all-normal panels get a green confirmation box)
     panel_name: str
     status: Literal["normal", "borderline", "watch_out"]
-    key_parameters: list[str]  # short "name: value [status]" strings for the callout box
+    key_parameters: list[str] = []  # short "name: value [status]" strings for the callout box
 
 
 class DietFoodItem(BaseModel):
@@ -93,9 +93,9 @@ class DietFoodItem(BaseModel):
 class DietPlan(BaseModel):
     plan_name: str  # e.g. "Longevity & wellness diet"
     rationale: str  # e.g. "Reduce oxidative stress and glycation"
-    avoid: list[DietFoodItem]
-    include: list[DietFoodItem]
-    bonus_tips: list[str]
+    avoid: list[DietFoodItem] = []
+    include: list[DietFoodItem] = []
+    bonus_tips: list[str] = []
 
 
 class RecommendedTest(BaseModel):
@@ -106,22 +106,22 @@ class IsolatedAbnormality(BaseModel):
     panel_name: str
     parameter_name: str
     explanation: str
-    common_symptoms: list[str]
-    next_steps: list[str]
-    recommended_tests: list[RecommendedTest]
+    common_symptoms: list[str] = []
+    next_steps: list[str] = []
+    recommended_tests: list[RecommendedTest] = []
 
 
 class HealthSummaryIndex(BaseModel):
-    abnormal_count: int
-    borderline_count: int
-    normal_count: int
+    abnormal_count: int = 0
+    borderline_count: int = 0
+    normal_count: int = 0
 
 
 class SmartReport(BaseModel):
     patient: PatientInfo
     wellness: WellnessSummary
     health_summary_index: HealthSummaryIndex
-    body_summary: list[BodySummaryHighlight]
-    panels: list[Panel]
+    body_summary: list[BodySummaryHighlight] = []
+    panels: list[Panel] = []
     diet_plan: DietPlan | None = None
     isolated_abnormalities: list[IsolatedAbnormality] | None = None
