@@ -109,33 +109,6 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions, o
       <div style={{ flex: 1, overflowY: "auto" }}>
         <SummaryIntro data={infographic} />
 
-        {!messages.some((m) => m.role === "user") && starterQuestions.length > 0 && (
-          <div style={{ margin: "0 0.75rem 0.75rem" }}>
-            <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: "0.5rem 0" }}>
-              Based on your report, you might want to ask:
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {starterQuestions.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => sendMessage(q)}
-                  style={{
-                    textAlign: "left",
-                    background: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "10px",
-                    padding: "0.65rem 0.9rem",
-                    fontSize: "0.9rem",
-                    color: "#334155",
-                  }}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div style={{ padding: "0 0.75rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           {messages.map((m, i) => {
             if (m.role === "user") {
@@ -187,8 +160,38 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions, o
               </div>
             );
           })}
-          <div ref={bottomRef} />
         </div>
+
+        {!messages.some((m) => m.role === "user") && starterQuestions.length > 0 && (
+          <div style={{ margin: "0.25rem 0.75rem 0.75rem" }}>
+            <p style={{ fontSize: "0.78rem", color: "#6366f1", fontWeight: 700, margin: "0 0 0.5rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+              💡 You might want to ask
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {starterQuestions.map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => sendMessage(q)}
+                  style={{
+                    textAlign: "left",
+                    background: "linear-gradient(135deg, #eef2ff, #f5f3ff)",
+                    border: "1.5px solid #c7d2fe",
+                    borderRadius: "12px",
+                    padding: "0.7rem 0.95rem",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    color: "#4338ca",
+                    boxShadow: "0 1px 3px rgba(99,102,241,0.12)",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", padding: "0.6rem", borderTop: "1px solid #e2e8f0", background: "#fff" }}>
