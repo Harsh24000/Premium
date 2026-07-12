@@ -3,7 +3,7 @@ import { submitRawReport, submitReport, fetchMockReport } from "../api";
 import type { SmartReport, SubmitReportResponse } from "../types";
 
 interface Props {
-  onReady: (result: SubmitReportResponse) => void;
+  onReady: (result: SubmitReportResponse, resubmit: () => Promise<SubmitReportResponse>) => void;
 }
 
 export default function ReportIntake({ onReady }: Props) {
@@ -17,10 +17,12 @@ export default function ReportIntake({ onReady }: Props) {
     try {
       const text = await file.text();
       const raw = JSON.parse(text);
-      // Generating the wellness score/panels/narrative from raw lab data
-      // takes a bit longer than a simple upload — loading text reflects that.
-      const result = await submitRawReport(raw);
-      onReady(result);
+      // Bound to this exact payload — if the session later expires
+      // (e.g. Render free-tier spin-down wiping in-memory state),
+      // calling this again regenerates it from the same source data.
+      const resubmit = () => submitRawReport(raw);
+      const result = await resubmit();
+      onReady(result, resubmit);
     } catch (e) {
       if (e instanceof SyntaxError) {
         setError("That file isn't valid JSON.");
@@ -37,8 +39,9 @@ export default function ReportIntake({ onReady }: Props) {
     setLoading(true);
     try {
       const report = await fetchMockReport();
-      const result = await submitReport(report as unknown as SmartReport);
-      onReady(result);
+      const resubmit = () => submitReport(report as unknown as SmartReport);
+      const result = await resubmit();
+      onReady(result, resubmit);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load mock report.");
     } finally {
