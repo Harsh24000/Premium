@@ -41,6 +41,17 @@ export async function fetchMockReport(): Promise<SmartReport> {
   return res.json();
 }
 
+/** Thrown specifically on 404 — the backend's in-memory session was lost
+ * (Render free-tier spin-down, or a redeploy). Distinguished from other
+ * failures so the caller can recover by resubmitting instead of just
+ * showing an error. */
+export class SessionExpiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SessionExpiredError";
+  }
+}
+
 export async function streamChat(
   sessionId: string,
   message: string,
@@ -51,6 +62,10 @@ export async function streamChat(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, message }),
   });
+  if (res.status === 404) {
+    const detail = await res.json().catch(() => ({}));
+    throw new SessionExpiredError(detail.detail || "Session expired.");
+  }
   if (!res.ok || !res.body) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.detail || `Chat failed (${res.status})`);
