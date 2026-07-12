@@ -105,9 +105,14 @@ export interface TopIssue {
 
 export interface InfographicSummary {
   patient_name: string;
-  short_summary: string;
+  patient_age: number;
+  patient_gender: string;
+  abnormal_count: number;
+  borderline_count: number;
+  normal_count: number;
   critical_alert: string | null;
   top_issues: TopIssue[];
+  intro_message: string;
 }
 
 export interface SubmitReportResponse {
