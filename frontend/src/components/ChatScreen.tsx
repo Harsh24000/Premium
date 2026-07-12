@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { streamChat } from "../api";
+import { streamChat, SessionExpiredError } from "../api";
 import type { ChatMessage, InfographicSummary } from "../types";
 import InfographicHeader from "./InfographicHeader";
 import MarkdownLite from "./MarkdownLite";
@@ -8,6 +8,7 @@ interface Props {
   sessionId: string;
   infographic: InfographicSummary;
   starterQuestions: string[];
+  onSessionExpired: () => Promise<string>; // resolves to a fresh session_id
 }
 
 const SUGGESTIONS_MARKER = "|SUGGESTIONS|";
@@ -24,26 +25,45 @@ function parseAssistantMessage(content: string): { text: string; suggestions: st
   return { text, suggestions };
 }
 
-export default function ChatScreen({ sessionId, infographic, starterQuestions }: Props) {
+export default function ChatScreen({ sessionId, infographic, starterQuestions, onSessionExpired }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  // Internal, mutable session id — starts from the prop, but gets swapped
+  // in place on recovery WITHOUT remounting this component, so existing
+  // chat history is never lost when the backend session expires.
+  const currentSessionId = useRef(sessionId);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    currentSessionId.current = sessionId;
+  }, [sessionId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, isRetry = false) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
-    setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: trimmed }, { role: "assistant", content: "" }]);
+    if (!isRetry) {
+      setInput("");
+      setMessages((prev) => [...prev, { role: "user", content: trimmed }, { role: "assistant", content: "" }]);
+    } else {
+      // Retry after recovery: clear the placeholder bubble's content so
+      // streaming starts fresh, without adding a duplicate user message.
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "assistant", content: "" };
+        return next;
+      });
+    }
     setLoading(true);
 
     try {
-      await streamChat(sessionId, trimmed, (chunk) => {
+      await streamChat(currentSessionId.current, trimmed, (chunk) => {
         setMessages((prev) => {
           const next = [...prev];
           next[next.length - 1] = { ...next[next.length - 1], content: next[next.length - 1].content + chunk };
@@ -51,6 +71,28 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions }:
         });
       });
     } catch (err) {
+      if (err instanceof SessionExpiredError && !isRetry) {
+        // Recover silently: get a fresh session from the same original
+        // report data, then retry this exact message once. The user
+        // never sees the expiry at all if recovery succeeds.
+        setLoading(false);
+        setRecovering(true);
+        try {
+          const freshId = await onSessionExpired();
+          currentSessionId.current = freshId;
+          setRecovering(false);
+          await sendMessage(trimmed, true);
+          return;
+        } catch {
+          setRecovering(false);
+          setMessages((prev) => [
+            ...prev.slice(0, -1),
+            { role: "assistant", content: "Your session expired and I couldn't reconnect automatically. Please go back and re-upload your report." },
+          ]);
+          setLoading(false);
+          return;
+        }
+      }
       setMessages((prev) => [
         ...prev.slice(0, -1),
         { role: "assistant", content: err instanceof Error ? err.message : "Something went wrong." },
@@ -117,7 +159,7 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions }:
             return (
               <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: "90%" }}>
                 <div style={{ background: "#ffffff", borderRadius: "14px", padding: "0.7rem 0.9rem", fontSize: "0.92rem", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-                  {text ? <MarkdownLite content={text} /> : isStreaming ? "…" : null}
+                  {text ? <MarkdownLite content={text} /> : (recovering ? "Reconnecting…" : isStreaming ? "…" : null)}
                 </div>
                 {suggestions.length > 0 && !isStreaming && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
