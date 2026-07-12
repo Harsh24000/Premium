@@ -11,6 +11,7 @@ from .config import get_settings
 from .infographic import build_infographic_summary
 from .llm_client import extract_smart_report_from_text, generate_high_risk_starter_questions, stream_chat
 from .models import SmartReport, safe_parse_smart_report
+from .raw_to_smart import generate_smart_report_from_raw
 from .pdf_utils import PdfExtractionError, extract_text_from_pdf
 from .store import Session, get_session, save_session
 
@@ -78,6 +79,31 @@ async def submit_report(report: dict) -> SubmitReportResponse:
         raise HTTPException(
             422, f"This JSON is missing something essential (patient name is required): {exc}"
         ) from exc
+
+    return _create_session_response(parsed)
+
+
+@app.post("/api/report/raw", response_model=SubmitReportResponse)
+async def submit_raw_report(raw: dict) -> SubmitReportResponse:
+    """
+    Accepts the RAW diagnofirm-format lab export (patient info + results/
+    investigation/observations, no wellness score or narrative content).
+    Computes status deterministically wherever a real numeric range
+    exists, uses the LLM only to classify genuinely ambiguous qualitative
+    results and generate narrative content — see raw_to_smart.py.
+    """
+    if not settings.groq_api_key:
+        raise HTTPException(500, "Server is missing GROQ_API_KEY.")
+
+    try:
+        generated = generate_smart_report_from_raw(raw)
+    except groq.APIError as exc:
+        raise HTTPException(502, f"Report generation failed: {exc}") from exc
+
+    try:
+        parsed = safe_parse_smart_report(generated)
+    except pydantic.ValidationError as exc:
+        raise HTTPException(422, f"Generated report didn't match the expected structure: {exc}") from exc
 
     return _create_session_response(parsed)
 
