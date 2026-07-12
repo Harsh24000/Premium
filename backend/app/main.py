@@ -60,11 +60,26 @@ def _create_session_response(report: SmartReport) -> SubmitReportResponse:
 
 
 @app.post("/api/report", response_model=SubmitReportResponse)
-async def submit_report(report: SmartReport) -> SubmitReportResponse:
-    """Accepts an already-structured SmartReport JSON directly."""
+async def submit_report(report: dict) -> SubmitReportResponse:
+    """
+    Accepts an already-structured SmartReport JSON directly. Uses the same
+    defensive parser as the PDF path (safe_parse_smart_report) rather than
+    FastAPI's automatic strict validation — real report exports from
+    different sources won't all match this schema exactly, and a single
+    missing/extra field shouldn't hard-fail the whole submission before
+    even reaching application code.
+    """
     if not settings.groq_api_key:
         raise HTTPException(500, "Server is missing GROQ_API_KEY.")
-    return _create_session_response(report)
+
+    try:
+        parsed = safe_parse_smart_report(report)
+    except pydantic.ValidationError as exc:
+        raise HTTPException(
+            422, f"This JSON is missing something essential (patient name is required): {exc}"
+        ) from exc
+
+    return _create_session_response(parsed)
 
 
 @app.post("/api/report/upload", response_model=SubmitReportResponse)
