@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { streamChat, SessionExpiredError } from "../api";
 import type { ChatMessage, InfographicSummary } from "../types";
-import InfographicHeader from "./InfographicHeader";
+import SummaryIntro from "./SummaryIntro";
 import MarkdownLite from "./MarkdownLite";
 
 interface Props {
@@ -105,7 +105,7 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions, o
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#f8fafc" }}>
       <div style={{ flex: 1, overflowY: "auto" }}>
-        <InfographicHeader data={infographic} />
+        <SummaryIntro data={infographic} />
 
         {messages.length === 0 && starterQuestions.length > 0 && (
           <div style={{ margin: "0 0.75rem 0.75rem" }}>
