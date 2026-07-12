@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { submitReport, fetchMockReport } from "../api";
+import { submitRawReport, submitReport, fetchMockReport } from "../api";
 import type { SmartReport, SubmitReportResponse } from "../types";
 
 interface Props {
@@ -11,31 +11,24 @@ export default function ReportIntake({ onReady }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function handleSubmitJson(report: SmartReport) {
+  async function handleFile(file: File) {
     setError(null);
     setLoading(true);
     try {
-      const result = await submitReport(report);
+      const text = await file.text();
+      const raw = JSON.parse(text);
+      // Generating the wellness score/panels/narrative from raw lab data
+      // takes a bit longer than a simple upload — loading text reflects that.
+      const result = await submitRawReport(raw);
       onReady(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleFile(file: File) {
-    setError(null);
-    try {
-      const text = await file.text();
-      const report = JSON.parse(text) as SmartReport;
-      await handleSubmitJson(report);
-    } catch (e) {
       if (e instanceof SyntaxError) {
-        setError("That file isn't valid JSON — check it's the exported smart report, not a PDF.");
+        setError("That file isn't valid JSON.");
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -44,9 +37,11 @@ export default function ReportIntake({ onReady }: Props) {
     setLoading(true);
     try {
       const report = await fetchMockReport();
-      await handleSubmitJson(report);
+      const result = await submitReport(report as unknown as SmartReport);
+      onReady(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load mock report.");
+    } finally {
       setLoading(false);
     }
   }
@@ -58,7 +53,7 @@ export default function ReportIntake({ onReady }: Props) {
           NirogGyan Premium
         </h1>
         <p style={{ color: "#64748b", fontSize: "0.9rem", margin: "0 0 1.25rem" }}>
-          Connect your smart health report to start your personalized consultation.
+          Upload your lab report data to generate your personalized consultation.
         </p>
 
         <div
@@ -74,7 +69,7 @@ export default function ReportIntake({ onReady }: Props) {
             marginBottom: "0.75rem",
           }}
         >
-          {loading ? "Loading…" : "Tap to upload your Smart Report (JSON)"}
+          {loading ? "Generating your report… this can take a moment" : "Tap to upload your lab report (JSON)"}
         </div>
         <input
           ref={inputRef}
