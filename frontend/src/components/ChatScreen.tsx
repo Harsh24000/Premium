@@ -26,7 +26,9 @@ function parseAssistantMessage(content: string): { text: string; suggestions: st
 }
 
 export default function ChatScreen({ sessionId, infographic, starterQuestions, onSessionExpired }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    infographic.intro_message ? [{ role: "assistant", content: infographic.intro_message }] : []
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [recovering, setRecovering] = useState(false);
@@ -107,7 +109,7 @@ export default function ChatScreen({ sessionId, infographic, starterQuestions, o
       <div style={{ flex: 1, overflowY: "auto" }}>
         <SummaryIntro data={infographic} />
 
-        {messages.length === 0 && starterQuestions.length > 0 && (
+        {!messages.some((m) => m.role === "user") && starterQuestions.length > 0 && (
           <div style={{ margin: "0 0.75rem 0.75rem" }}>
             <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: "0.5rem 0" }}>
               Based on your report, you might want to ask:
