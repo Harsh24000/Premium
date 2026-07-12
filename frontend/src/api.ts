@@ -6,13 +6,18 @@ import type { SmartReport, SubmitReportResponse } from "./types";
 // https://niroggyan-premium-api.onrender.com) as a build-time env var.
 const BASE = `${import.meta.env.VITE_API_BASE ?? ""}/api`;
 
-export async function submitReportPdf(file: File): Promise<SubmitReportResponse> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE}/report/upload`, { method: "POST", body: form });
+/** Submits the RAW diagnofirm-format lab export (not a pre-structured
+ * SmartReport). Backend generates the wellness score, panels, and
+ * narrative content from these raw observations. */
+export async function submitRawReport(raw: object): Promise<SubmitReportResponse> {
+  const res = await fetch(`${BASE}/report/raw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(raw),
+  });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.detail || `Upload failed (${res.status})`);
+    throw new Error(detail.detail || `Submit failed (${res.status})`);
   }
   return res.json();
 }
