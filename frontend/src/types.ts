@@ -105,11 +105,7 @@ export interface TopIssue {
 
 export interface InfographicSummary {
   patient_name: string;
-  wellness_score: number;
-  wellness_label: string;
-  abnormal_count: number;
-  borderline_count: number;
-  normal_count: number;
+  short_summary: string;
   critical_alert: string | null;
   top_issues: TopIssue[];
 }
