@@ -25,9 +25,9 @@ export default function ReportIntake({ onReady }: Props) {
       onReady(result, resubmit);
     } catch (e) {
       if (e instanceof SyntaxError) {
-        setError("That file isn't valid JSON.");
+        setError("That file isn't valid JSON. Export it again from your lab portal and retry.");
       } else {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+        setError(e instanceof Error ? e.message : "The upload didn't go through. Try again.");
       }
     } finally {
       setLoading(false);
@@ -43,37 +43,30 @@ export default function ReportIntake({ onReady }: Props) {
       const result = await resubmit();
       onReady(result, resubmit);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load mock report.");
+      setError(e instanceof Error ? e.message : "The sample report didn't load.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "1.5rem", background: "#f8fafc" }}>
-      <div style={{ background: "#fff", borderRadius: "18px", padding: "1.5rem", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
-        <h1 style={{ fontSize: "1.4rem", fontWeight: 800, margin: "0 0 0.4rem", color: "#111827" }}>
-          NirogGyan Premium
-        </h1>
-        <p style={{ color: "#64748b", fontSize: "0.9rem", margin: "0 0 1.25rem" }}>
-          Upload your lab report data to generate your personalized consultation.
+    <div className="intake">
+      <div className="intake__card">
+        <div className="intake__brand">NirogGyan</div>
+        <p className="intake__sub">
+          Upload your lab report and Dr. Gyan will turn it into a summary you can actually read.
         </p>
 
-        <div
-          onClick={() => inputRef.current?.click()}
-          style={{
-            border: "2px dashed #c7d2fe",
-            borderRadius: "14px",
-            padding: "1.5rem",
-            textAlign: "center",
-            color: "#4f46e5",
-            fontWeight: 600,
-            cursor: "pointer",
-            marginBottom: "0.75rem",
-          }}
-        >
-          {loading ? "Generating your report… this can take a moment" : "Tap to upload your lab report (JSON)"}
-        </div>
+        <button className="dropzone" onClick={() => inputRef.current?.click()} disabled={loading}>
+          {loading ? (
+            "Reading your report…"
+          ) : (
+            <>
+              Choose your report file
+              <span className="dropzone__hint">JSON export from your lab</span>
+            </>
+          )}
+        </button>
         <input
           ref={inputRef}
           type="file"
@@ -85,23 +78,11 @@ export default function ReportIntake({ onReady }: Props) {
           }}
         />
 
-        <button
-          onClick={useMockReport}
-          disabled={loading}
-          style={{
-            width: "100%",
-            background: "none",
-            border: "1px solid #e2e8f0",
-            borderRadius: "10px",
-            padding: "0.6rem",
-            color: "#64748b",
-            fontSize: "0.85rem",
-          }}
-        >
-          Use sample report (for testing)
+        <button className="intake__alt" onClick={useMockReport} disabled={loading}>
+          Use a sample report instead
         </button>
 
-        {error && <p style={{ color: "#dc2626", fontSize: "0.85rem", marginTop: "0.75rem" }}>{error}</p>}
+        {error && <div className="intake__error">{error}</div>}
       </div>
     </div>
   );
