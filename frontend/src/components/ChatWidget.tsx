@@ -1,18 +1,31 @@
 import { useState, useRef, useEffect } from "react";
-import { streamChat, SessionExpiredError } from "../api";
+import {
+  streamChat,
+  SessionExpiredError,
+  QuotaExceededError,
+  MessageTooLongError,
+  MultipleQuestionsError,
+} from "../api";
 import type { ChatMessage, InfographicSummary, SmartReport } from "../types";
 import MarkdownLite from "./MarkdownLite";
+
+type Mode = "standard" | "expert";
 
 interface Props {
   sessionId: string;
   infographic: InfographicSummary;
   starterQuestions: string[];
   report: SmartReport;
+  plan: string;
+  messagesRemaining: number;
+  messagesQuota: number;
   onSessionExpired: () => Promise<string>;
 }
 
 const SUGGESTIONS_MARKER = "|SUGGESTIONS|";
 const SIMPLIFY_PROMPT = "Can you explain that again in even simpler, everyday words?";
+const MAX_CHARS = 75; // mirrors backend/app/plans.py MAX_MESSAGE_CHARS — keep in sync
+const MODE_COST: Record<Mode, number> = { standard: 1, expert: 2 }; // mirrors plans.py MODE_CREDIT_COST
 
 /** Split the model's reply from its trailing follow-up questions.
  *  While a reply is still streaming the marker can arrive a character at
@@ -36,13 +49,11 @@ function parseAssistantMessage(content: string): { text: string; suggestions: st
   return { text, suggestions };
 }
 
-/** Quick-action chips above the input. "Explain more simply" is always
- *  available; the rest only appear when the report actually has
- *  material to back them — no chip should ever lead to an empty answer. */
+/** Quick-action chips above the input. "Explain more simply" already
+ *  lives under every message, so this row is reserved for things that
+ *  need the WHOLE report to answer — only shown when the report
+ *  actually has material to back the chip. */
 function buildQuickActions(report: SmartReport): string[] {
-  // "Explain more simply" already lives under every message, so this
-  // row is reserved for things that need the WHOLE report to answer —
-  // the actual reason to pay for this instead of searching a symptom.
   const actions = ["What matters most in my results?"];
   if (report.diet_plan || report.wellness.dietary_recommendation) {
     actions.push("What should I eat or avoid?");
@@ -67,9 +78,24 @@ function TypingDots() {
   );
 }
 
-export default function ChatWidget({ sessionId, infographic, starterQuestions, report, onSessionExpired }: Props) {
+const PLAN_LABEL: Record<string, string> = {
+  trial: "Free trial",
+  basic_99: "₹99 plan",
+};
+
+export default function ChatWidget({
+  sessionId,
+  infographic,
+  starterQuestions,
+  report,
+  plan,
+  messagesRemaining,
+  messagesQuota,
+  onSessionExpired,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(false);
+  const [mode, setMode] = useState<Mode>("standard");
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     infographic.intro_message ? [{ role: "assistant", content: infographic.intro_message }] : []
   );
@@ -77,11 +103,17 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
   const [loading, setLoading] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [remaining, setRemaining] = useState(messagesRemaining);
+  const [quota, setQuota] = useState(messagesQuota);
   const currentSessionId = useRef(sessionId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const quickActions = useRef(buildQuickActions(report)).current;
+  const chars = input.length;
+  const overLimit = chars > MAX_CHARS;
+  const outOfQuota = remaining <= 0;
+  const cantAffordExpertMode = mode === "expert" && remaining < MODE_COST.expert && remaining > 0;
 
   useEffect(() => {
     currentSessionId.current = sessionId;
@@ -109,7 +141,30 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
 
   async function sendMessage(text: string, isRetry = false) {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || outOfQuota) return;
+    if (trimmed.length > MAX_CHARS) {
+      // Belt-and-suspenders: the input box already disables sending over
+      // the limit, but a quick-action chip or suggestion could in theory
+      // exceed it too if the model ever ignores its own length rules.
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `That's a bit long for one question — try trimming it to ${MAX_CHARS} characters or fewer.`,
+        },
+      ]);
+      return;
+    }
+    if (mode === "expert" && remaining < MODE_COST.expert) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Expert mode needs ${MODE_COST.expert} credits and you have ${remaining} left. Switch to standard mode, or upgrade for more.`,
+        },
+      ]);
+      return;
+    }
 
     if (!isRetry) {
       setInput("");
@@ -124,7 +179,7 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
     setLoading(true);
 
     try {
-      await streamChat(currentSessionId.current, trimmed, (chunk) => {
+      const usage = await streamChat(currentSessionId.current, trimmed, mode, (chunk) => {
         setMessages((prev) => {
           const next = [...prev];
           next[next.length - 1] = {
@@ -134,6 +189,8 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
           return next;
         });
       });
+      setRemaining(usage.remaining);
+      setQuota(usage.quota);
     } catch (err) {
       if (err instanceof SessionExpiredError && !isRetry) {
         setLoading(false);
@@ -157,6 +214,43 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
           return;
         }
       }
+      if (err instanceof QuotaExceededError) {
+        setRemaining(err.remaining);
+        setQuota(err.quota);
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          {
+            role: "assistant",
+            content: err.insufficientForMode
+              ? `Expert mode needs ${err.needed} credits — you have ${err.remaining} left. Try standard mode, or upgrade for more.`
+              : `You've used all ${err.quota} questions on your ${PLAN_LABEL[err.plan] ?? err.plan}. Upgrade to keep the conversation going.`,
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+      if (err instanceof MessageTooLongError) {
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          {
+            role: "assistant",
+            content: `That's a bit long — try it in ${err.maxChars} characters or fewer, one question at a time.`,
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+      if (err instanceof MultipleQuestionsError) {
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          {
+            role: "assistant",
+            content: "That looks like a couple of questions in one — could you send them one at a time?",
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
       setMessages((prev) => [
         ...prev.slice(0, -1),
         { role: "assistant", content: "That message didn't get through. Try sending it again." },
@@ -179,6 +273,8 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
 
   const unread = !seen && infographic.intro_message ? 1 : 0;
   const noUserTurnsYet = !messages.some((m) => m.role === "user");
+  const depletionPct = quota > 0 ? Math.max(0, Math.min(100, (remaining / quota) * 100)) : 0;
+  const quotaTone = remaining <= 0 ? "empty" : remaining <= Math.max(1, Math.ceil(quota * 0.2)) ? "low" : "ok";
 
   if (!open) {
     return (
@@ -205,6 +301,42 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
           ✕
         </button>
       </header>
+
+      {/* Prominent quota banner — the count and its depletion are meant
+          to be seen at a glance, not buried in a status line. */}
+      <div className={`quotabar quotabar--${quotaTone}`}>
+        <div className="quotabar__row">
+          <span className="quotabar__text">
+            {remaining} question{remaining === 1 ? "" : "s"} left
+          </span>
+          <span className="quotabar__plan">{PLAN_LABEL[plan] ?? plan}</span>
+        </div>
+        <div className="quotabar__track">
+          <div className="quotabar__fill" style={{ width: `${depletionPct}%` }} />
+        </div>
+      </div>
+
+      <div className="modetoggle" role="radiogroup" aria-label="Answer depth">
+        <button
+          className={`modetoggle__opt ${mode === "standard" ? "modetoggle__opt--active" : ""}`}
+          role="radio"
+          aria-checked={mode === "standard"}
+          onClick={() => setMode("standard")}
+        >
+          Standard
+        </button>
+        <button
+          className={`modetoggle__opt ${mode === "expert" ? "modetoggle__opt--active" : ""}`}
+          role="radio"
+          aria-checked={mode === "expert"}
+          onClick={() => setMode("expert")}
+        >
+          Expert <span className="modetoggle__badge">2x</span>
+        </button>
+      </div>
+      {mode === "expert" && (
+        <p className="modetoggle__hint">Deeper clinical detail and guideline references — costs 2 credits per question.</p>
+      )}
 
       <div className="chatlog">
         {messages.map((m, i) => {
@@ -234,13 +366,15 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
                   <button className="msgaction" onClick={() => copyMessage(text, i)}>
                     {copiedIdx === i ? "Copied ✓" : "Copy"}
                   </button>
-                  <button className="msgaction" onClick={() => sendMessage(SIMPLIFY_PROMPT)}>
-                    Explain more simply
-                  </button>
+                  {!outOfQuota && (
+                    <button className="msgaction" onClick={() => sendMessage(SIMPLIFY_PROMPT)}>
+                      Explain more simply
+                    </button>
+                  )}
                 </div>
               )}
 
-              {suggestions.length > 0 && !isStreaming && (
+              {suggestions.length > 0 && !isStreaming && !outOfQuota && (
                 <div className="suggests">
                   {suggestions.map((s, si) => (
                     <button key={si} className="suggest" onClick={() => sendMessage(s)}>
@@ -253,7 +387,7 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
           );
         })}
 
-        {noUserTurnsYet && starterQuestions.length > 0 && (
+        {noUserTurnsYet && starterQuestions.length > 0 && !outOfQuota && (
           <div className="suggests">
             {starterQuestions.map((q, i) => (
               <button key={i} className="suggest" onClick={() => sendMessage(q)}>
@@ -263,28 +397,55 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, r
           </div>
         )}
 
+        {outOfQuota && (
+          <div className="paywall">
+            <div className="paywall__title">You're out of questions</div>
+            <p>
+              You've used all {quota} on your {PLAN_LABEL[plan] ?? plan}. Upgrade to keep talking with Dr. Gyan
+              about this report.
+            </p>
+            <button className="paywall__cta" disabled title="Payment integration coming soon">
+              Upgrade — coming soon
+            </button>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      <div className="quickrow">
-        {quickActions.map((q, i) => (
-          <button key={i} className="quickchip" onClick={() => sendMessage(q)} disabled={loading}>
-            {q}
-          </button>
-        ))}
-      </div>
+      {!outOfQuota && (
+        <div className="quickrow">
+          {quickActions.map((q, i) => (
+            <button key={i} className="quickchip" onClick={() => sendMessage(q)} disabled={loading}>
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="chatbar">
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
-          placeholder="Ask about your report…"
-          disabled={loading}
-          aria-label="Message Dr. Gyan"
-        />
-        <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()} aria-label="Send message">
+        <div className="chatbar__field">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !overLimit && sendMessage(input)}
+            placeholder={outOfQuota ? "Upgrade to keep chatting" : "Ask about your report…"}
+            disabled={loading || outOfQuota}
+            aria-label="Message Dr. Gyan"
+            maxLength={MAX_CHARS + 20}
+          />
+          {input.length > 0 && (
+            <span className={`charcount ${overLimit ? "charcount--over" : ""}`}>
+              {chars}/{MAX_CHARS}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => sendMessage(input)}
+          disabled={loading || outOfQuota || !input.trim() || overLimit || cantAffordExpertMode}
+          aria-label="Send message"
+        >
           ➤
         </button>
       </div>
