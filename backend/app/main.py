@@ -1,8 +1,9 @@
 import uuid
+from typing import Literal
 
 import groq
 import pydantic
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,9 +11,11 @@ from pydantic import BaseModel
 from .config import get_settings
 from .infographic import build_infographic_summary
 from .llm_client import extract_smart_report_from_text, generate_high_risk_starter_questions, stream_chat
+from .plans import MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS, cost_for_mode, looks_like_multiple_questions, quota_for
 from .models import SmartReport, safe_parse_smart_report
 from .raw_to_smart import generate_smart_report_from_raw
 from .pdf_utils import PdfExtractionError, extract_text_from_pdf
+from .rate_limit import check_and_record
 from .store import Session, get_session, save_session
 
 settings = get_settings()
@@ -39,11 +42,20 @@ class SubmitReportResponse(BaseModel):
     # infographic summary was returned, which wasn't enough to build a
     # report view on the client.
     report: SmartReport
+    plan: str
+    messages_remaining: int
+    messages_quota: int
 
 
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    # "standard" = layperson mode (plain language, the default for
+    # everyone). "expert" = health-savvy mode (clinical terminology,
+    # guideline references) — costs more credits, see plans.py.
+    # Literal here means FastAPI rejects any other value automatically,
+    # before it ever reaches cost_for_mode().
+    mode: Literal["standard", "expert"] = "standard"
 
 
 def _create_session_response(report: SmartReport) -> SubmitReportResponse:
@@ -63,11 +75,14 @@ def _create_session_response(report: SmartReport) -> SubmitReportResponse:
         infographic=infographic,
         starter_questions=starter_questions,
         report=report,
+        plan=session.plan,
+        messages_remaining=quota_for(session.plan) - session.messages_used,
+        messages_quota=quota_for(session.plan),
     )
 
 
 @app.post("/api/report", response_model=SubmitReportResponse)
-async def submit_report(report: dict) -> SubmitReportResponse:
+async def submit_report(report: dict, request: Request) -> SubmitReportResponse:
     """
     Accepts an already-structured SmartReport JSON directly. Uses the same
     defensive parser as the PDF path (safe_parse_smart_report) rather than
@@ -76,6 +91,7 @@ async def submit_report(report: dict) -> SubmitReportResponse:
     missing/extra field shouldn't hard-fail the whole submission before
     even reaching application code.
     """
+    check_and_record(request)
     if not settings.groq_api_key:
         raise HTTPException(500, "Server is missing GROQ_API_KEY.")
 
@@ -90,7 +106,7 @@ async def submit_report(report: dict) -> SubmitReportResponse:
 
 
 @app.post("/api/report/raw", response_model=SubmitReportResponse)
-async def submit_raw_report(raw: dict) -> SubmitReportResponse:
+async def submit_raw_report(raw: dict, request: Request) -> SubmitReportResponse:
     """
     Accepts the RAW diagnofirm-format lab export (patient info + results/
     investigation/observations, no wellness score or narrative content).
@@ -98,6 +114,7 @@ async def submit_raw_report(raw: dict) -> SubmitReportResponse:
     exists, uses the LLM only to classify genuinely ambiguous qualitative
     results and generate narrative content — see raw_to_smart.py.
     """
+    check_and_record(request)
     if not settings.groq_api_key:
         raise HTTPException(500, "Server is missing GROQ_API_KEY.")
 
@@ -115,13 +132,14 @@ async def submit_raw_report(raw: dict) -> SubmitReportResponse:
 
 
 @app.post("/api/report/upload", response_model=SubmitReportResponse)
-async def upload_report_pdf(file: UploadFile = File(...)) -> SubmitReportResponse:
+async def upload_report_pdf(request: Request, file: UploadFile = File(...)) -> SubmitReportResponse:
     """
     Accepts a smart-report PDF, extracts its text, and uses an LLM to
     structure it into the SmartReport schema. Best-effort: fields the
     report doesn't actually contain (per-category numeric scores, most
     historical trends) are correctly left null rather than guessed.
     """
+    check_and_record(request)
     if not settings.groq_api_key:
         raise HTTPException(500, "Server is missing GROQ_API_KEY.")
 
@@ -174,4 +192,106 @@ async def chat_endpoint(req: ChatRequest):
     if not session:
         raise HTTPException(404, "Session not found or expired.")
 
-    return StreamingResponse(stream_chat(session, req.message), media_type="text/plain")
+    char_count = len(req.message)
+    word_count = len(req.message.split())
+    if char_count > MAX_MESSAGE_CHARS or word_count > MAX_MESSAGE_WORDS:
+        raise HTTPException(
+            422,
+            {
+                "error": "message_too_long",
+                "max_chars": MAX_MESSAGE_CHARS,
+                "char_count": char_count,
+                "max_words": MAX_MESSAGE_WORDS,
+                "word_count": word_count,
+                "detail": f"Keep it to one short question — {MAX_MESSAGE_CHARS} characters or fewer.",
+            },
+        )
+
+    if looks_like_multiple_questions(req.message):
+        raise HTTPException(
+            422,
+            {
+                "error": "multiple_questions",
+                "detail": "That looks like more than one question — ask them one at a time.",
+            },
+        )
+
+    quota = quota_for(session.plan)
+    cost = cost_for_mode(req.mode)
+    remaining_before = quota - session.messages_used
+
+    if remaining_before < cost:
+        if remaining_before <= 0:
+            # Nothing left at all, in either mode.
+            raise HTTPException(
+                402,
+                {
+                    "error": "quota_exceeded",
+                    "plan": session.plan,
+                    "quota": quota,
+                    "remaining": 0,
+                    "detail": "You've used all your questions on this plan. Upgrade to keep chatting.",
+                },
+            )
+        # Some credits left, just not enough for the mode they asked for
+        # (expert costs 2; someone with exactly 1 left needs this distinct
+        # message rather than being told they have nothing at all).
+        raise HTTPException(
+            402,
+            {
+                "error": "insufficient_credits_for_mode",
+                "plan": session.plan,
+                "quota": quota,
+                "remaining": remaining_before,
+                "needed": cost,
+                "detail": f"Expert mode needs {cost} credits — you have {remaining_before} left. Try standard mode, or upgrade for more.",
+            },
+        )
+
+    # Counted on acceptance, not on successful completion — a request that
+    # fails mid-stream still used a network round trip and a slot in the
+    # conversation history. Given how cheap each message is (see cost
+    # notes), this tradeoff isn't worth the complexity of a refund path.
+    session.messages_used += cost
+    save_session(session)
+    remaining = quota - session.messages_used
+
+    return StreamingResponse(
+        stream_chat(session, req.message, mode=req.mode),
+        media_type="text/plain",
+        headers={
+            "X-Messages-Remaining": str(remaining),
+            "X-Messages-Quota": str(quota),
+        },
+    )
+
+
+class ActivatePlanRequest(BaseModel):
+    plan: str
+
+
+@app.post("/api/session/{session_id}/plan")
+async def activate_plan(session_id: str, req: ActivatePlanRequest):
+    """
+    STUB — flips a session's plan with no payment verification at all.
+    This exists so you have somewhere to wire a real payment webhook
+    once you integrate a gateway: after the gateway confirms a
+    successful ₹99 payment server-side, YOUR SERVER calls this (or the
+    logic it wraps) — never the browser directly. Calling this from
+    client-side code today means anyone can grant themselves the paid
+    quota for free by hitting this endpoint themselves; there is no
+    auth in this codebase to stop them (see README).
+    """
+    from .plans import PLAN_QUOTAS
+
+    if req.plan not in PLAN_QUOTAS:
+        raise HTTPException(400, f"Unknown plan '{req.plan}'.")
+
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found or expired.")
+
+    session.plan = req.plan
+    session.messages_used = 0
+    save_session(session)
+    return {"plan": session.plan, "quota": PLAN_QUOTAS[req.plan]}
