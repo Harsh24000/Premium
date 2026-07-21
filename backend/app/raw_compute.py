@@ -35,7 +35,7 @@ class FlatObservation:
         self.unit = obs.unit
         self.min_value = obs.MinValue
         self.max_value = obs.MaxValue
-        self.impression = obs.impression.strip()
+        self.impression = (obs.impression or "").strip()
         self.status: str | None = self._compute_status()
 
     def _compute_status(self) -> str | None:
@@ -92,7 +92,46 @@ def flatten_observations(raw: RawLabExport) -> list[FlatObservation]:
                 if not obs.name:
                     continue
                 flat.append(FlatObservation(panel_name, investigation.test_type, obs))
+
+    _dedupe_names(flat)
     return flat
+
+
+def _dedupe_names(flat: list[FlatObservation]) -> None:
+    """
+    Real lab exports routinely repeat a test name within one report —
+    confirmed in a real Blal CBC export, which reports "Neutrophils"
+    twice: once as a percentage, once as an absolute count, same
+    investigation, different unit. This is standard for any CBC
+    differential, not an edge case.
+
+    Downstream code keys observations by name in a plain dict (see
+    raw_to_smart.py's obs_by_name) — an unresolved collision there
+    silently drops one of the two and shows the wrong one under the
+    other's name. Disambiguate here, once, before anything else
+    (including the LLM) ever sees these names, so every name from this
+    point on is guaranteed unique and nothing downstream needs to know
+    duplicates were ever possible.
+    """
+    groups: dict[str, list[FlatObservation]] = {}
+    for obs in flat:
+        groups.setdefault(obs.name.strip().lower(), []).append(obs)
+
+    for group in groups.values():
+        if len(group) <= 1:
+            continue
+        seen: set[str] = set()
+        for i, obs in enumerate(group):
+            # Prefer disambiguating by unit — meaningful to a reader
+            # ("Neutrophils (%)" vs "Neutrophils (1000/mm3)"). Only fall
+            # back to a bare counter if the unit doesn't actually make it
+            # unique (missing, or duplicated in some other real report
+            # we haven't seen yet) — never leave a genuine collision.
+            candidate = f"{obs.name} ({obs.unit})" if obs.unit else obs.name
+            if not obs.unit or candidate in seen:
+                candidate = f"{obs.name} (#{i + 1})"
+            seen.add(candidate)
+            obs.name = candidate
 
 
 MAX_SCORE_DEDUCTION = 60  # never let the deterministic score go below 40
