@@ -3,6 +3,7 @@ import json
 import groq
 
 from .config import get_settings
+from .llm_client import _log_usage
 from .raw_compute import FlatObservation, compute_wellness_score, flatten_observations, score_to_label
 from .raw_models import RawLabExport
 from .raw_to_smart_prompt import RAW_TO_SMART_SYSTEM
@@ -53,12 +54,20 @@ def generate_smart_report_from_raw(raw_data: dict) -> dict:
         model=_settings.chat_model,
         temperature=0.2,
         max_tokens=3500,
+        # "low" — see llm_client._log_usage docstring for why this matters:
+        # gpt-oss-120b defaults to "medium" reasoning effort, billed as
+        # output tokens, unaccounted for until this was added. This call
+        # writes a wellness narrative from already-classified data, which
+        # doesn't need deep reasoning — the hard classification work
+        # already happened deterministically in raw_compute.py.
+        reasoning_effort="low",
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": RAW_TO_SMART_SYSTEM},
             {"role": "user", "content": llm_input},
         ],
     )
+    _log_usage("raw_to_smart", response)
     generated = json.loads(response.choices[0].message.content)
 
     # Apply LLM classifications ONLY to observations that had no
@@ -164,7 +173,7 @@ def generate_smart_report_from_raw(raw_data: dict) -> dict:
             "age": _try_float(raw.Age) or 0,
             "gender": raw.Gender,
             "accession_no": raw.WorkOrderID,
-            "date_of_test": raw.Date,
+            "date_of_test": raw.Date or "",  # raw.Date is nullable; PatientInfo.date_of_test isn't (see models.py)
         },
         "wellness": {
             "score": final_score,
