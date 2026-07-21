@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from .models import SmartReport
+from .plans import DEFAULT_PLAN
 
 
 @dataclass
@@ -8,6 +9,8 @@ class Session:
     session_id: str
     report: SmartReport
     messages: list[dict] = field(default_factory=list)
+    plan: str = DEFAULT_PLAN
+    messages_used: int = 0
 
 
 _sessions: dict[str, Session] = {}
