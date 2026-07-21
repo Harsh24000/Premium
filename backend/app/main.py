@@ -34,6 +34,11 @@ class SubmitReportResponse(BaseModel):
     session_id: str
     infographic: dict
     starter_questions: list[str]
+    # The full parsed report. The dashboard renders panels, parameters,
+    # diet plan and next steps directly from this — previously only the
+    # infographic summary was returned, which wasn't enough to build a
+    # report view on the client.
+    report: SmartReport
 
 
 class ChatRequest(BaseModel):
@@ -57,6 +62,7 @@ def _create_session_response(report: SmartReport) -> SubmitReportResponse:
         session_id=session_id,
         infographic=infographic,
         starter_questions=starter_questions,
+        report=report,
     )
 
 
