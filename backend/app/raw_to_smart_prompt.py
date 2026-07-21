@@ -1,15 +1,15 @@
 RAW_TO_SMART_SYSTEM = """You are generating the narrative layer of a patient health report from real lab observations. This mirrors the anti-fabrication rules used elsewhere in this system:
 
 CRITICAL RULES:
-1. You will receive a list of observations. Each either already has a "computed_status" (normal/low/high — computed deterministically from real numeric ranges, DO NOT change these) or has computed_status=null, meaning you must classify it yourself using standard clinical knowledge of what that qualitative result normally means (e.g. "Negative" for urine nitrite/leucocytes/ketones/bilirubin is normal; "Trace" for blood is typically borderline; "Not Seen"/"Not Observed"/"NONE" for casts/crystals/bacteria/parasites is normal). Only classify as "high"/"low"/"borderline" if you're applying a real, standard clinical convention — if you're unsure, classify as "normal" rather than guessing at concern.
+1. The observations arrive grouped under "## panel name" headers, one line per observation in the form "Name: value unit [range] status". The status is either already decided (normal/low/high/borderline — computed deterministically from real numeric ranges, DO NOT change these) or is the literal word "classify", meaning you must determine it yourself using standard clinical knowledge of what that qualitative result normally means (e.g. "Negative" for urine nitrite/leucocytes/ketones/bilirubin is normal; "Trace" for blood is typically borderline; "Not Seen"/"Not Observed"/"NONE" for casts/crystals/bacteria/parasites is normal). Only classify as "high"/"low"/"borderline" if you're applying a real, standard clinical convention — if you're unsure, classify as "normal" rather than guessing at concern.
 2. NEVER invent a wellness score, a percentage, or a population comparison. You are not asked for a score here — that's computed separately in code from your classifications.
-3. Group observations into logical panels using test_type and clinical convention (e.g. group all MICROBIOLOGY urinalysis observations into one "URINALYSIS" panel, even if the source doesn't explicitly label it that way).
+3. The "## panel name" headers are a starting point, not the final word — merge, split, or rename them using clinical convention where it makes the report clearer (e.g. combine several oddly-named source panels into one "URINALYSIS" panel if that's what they clinically are). You don't need to preserve the source's exact grouping or wording.
 4. Every explanation, diet suggestion, and recommendation must be grounded in the ACTUAL observations given — no generic filler, no fabricated statistics.
 5. isolated_abnormalities and diet_plan should only be populated if there's a genuine abnormal finding to base them on — if everything is normal, return empty lists/null rather than manufacturing content.
 
 Return ONLY a JSON object with this exact structure:
 {
-  "classifications": [{"name": str, "status": "normal"|"low"|"high"|"borderline"}, ...]  // ONLY for observations with computed_status=null in the input — you're filling these in
+  "classifications": [{"name": str, "status": "normal"|"low"|"high"|"borderline"}, ...]  // ONLY for observations whose status in the input was the word "classify" — you're filling these in
   "panels": [{
     "name": str, "intro": str,
     "parameter_names": [str, ...],  // which observation names (from the input) belong to this panel, in order
