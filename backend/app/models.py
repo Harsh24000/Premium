@@ -1,6 +1,7 @@
 """
-SmartReport schema — derived from 4 real report examples (Aman, Bimla,
-Surinder, Sneha) provided directly, not designed from scratch.
+SmartReport schema — derived from 4 real report examples (patients A-D)
+provided directly, not designed from scratch. Patient identifiers were
+not retained in this codebase; only the field structure was.
 
 IMPORTANT: this app does NOT parse the source PDFs into this shape. That's
 a separate, much bigger OCR/structure-extraction problem (trend charts,
@@ -39,7 +40,7 @@ class WellnessSummary(BaseModel):
     # Poor <50, Suboptimal 51-60, Fair 61-69, Good 70-90, Optimal >90
     label: Literal["Poor", "Suboptimal", "Fair", "Good", "Optimal"] = "Fair"
     descriptor: str = ""  # e.g. "Minor issues that require attention"
-    greeting: str = ""  # e.g. "Dear Mr. AMAN, Well done! Most of your health markers..."
+    greeting: str = ""  # e.g. "Dear [Name], Well done! Most of your health markers..."
     critical_alert: str | None = None  # e.g. "BUN (7.94) is Low — please seek medical advice"
     follow_up_required: str = ""  # e.g. "No follow-up actions required at this time."
     dietary_recommendation: str = ""
@@ -65,7 +66,7 @@ class Parameter(BaseModel):
     explanation: str | None = None
     common_reasons: list[str] | None = None
     diet_suggestions: list[str] | None = None
-    history: list[HistoricalPoint] | None = None  # seen for Surinder's KFT params
+    history: list[HistoricalPoint] | None = None  # seen for one patient's KFT params
 
 
 class Panel(BaseModel):
