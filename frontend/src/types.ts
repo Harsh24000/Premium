@@ -126,6 +126,9 @@ export interface SubmitReportResponse {
   infographic: InfographicSummary;
   starter_questions: string[];
   report: SmartReport;
+  plan: string;
+  messages_remaining: number;
+  messages_quota: number;
 }
 
 export interface ChatMessage {
