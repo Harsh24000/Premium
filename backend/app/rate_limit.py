@@ -21,7 +21,13 @@ import time
 from fastapi import HTTPException, Request
 
 # Max report submissions allowed from one IP within the window.
-MAX_SUBMISSIONS_PER_WINDOW = 5
+# Raised from 5 to 20 while actively developing/testing — 5/hour is
+# fine once real users are involved, but it fights normal iteration
+# during a build-and-check cycle like this one. The actual abuse case
+# this guards against (a script hammering the endpoint to farm free
+# trial quotas) is still blocked at 20/hour; lower this back toward
+# 5-8 before real launch traffic.
+MAX_SUBMISSIONS_PER_WINDOW = 20
 WINDOW_SECONDS = 60 * 60  # 1 hour
 
 _submissions: dict[str, list[float]] = {}
