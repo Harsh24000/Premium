@@ -16,8 +16,15 @@ export async function submitRawReport(raw: object): Promise<SubmitReportResponse
     body: JSON.stringify(raw),
   });
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.detail || `Submit failed (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    // FastAPI wraps HTTPException(status, {...dict...}) as {"detail": {...dict...}}.
+    // Several endpoints (rate limit, quota, message-length) send a dict, not a
+    // string, as that detail — grabbing detail.detail directly gets the nested
+    // object, which JS then stringifies as the unhelpful "[object Object]".
+    // Drill one level further for the actual message string.
+    const inner = body.detail;
+    const message = typeof inner === "string" ? inner : inner?.detail;
+    throw new Error(message || `Submit failed (${res.status})`);
   }
   return res.json();
 }
@@ -29,8 +36,10 @@ export async function submitReport(report: SmartReport): Promise<SubmitReportRes
     body: JSON.stringify(report),
   });
   if (!res.ok) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.detail || `Submit failed (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    const inner = body.detail;
+    const message = typeof inner === "string" ? inner : inner?.detail;
+    throw new Error(message || `Submit failed (${res.status})`);
   }
   return res.json();
 }
@@ -169,8 +178,10 @@ export async function streamChat(
     );
   }
   if (!res.ok || !res.body) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.detail || `Chat failed (${res.status})`);
+    const body = await res.json().catch(() => ({}));
+    const inner = body.detail;
+    const message = typeof inner === "string" ? inner : inner?.detail;
+    throw new Error(message || `Chat failed (${res.status})`);
   }
 
   const remainingHeader = res.headers.get("X-Messages-Remaining");
