@@ -40,7 +40,10 @@ function parseAssistantMessage(content: string): { text: string; suggestions: st
  *  available; the rest only appear when the report actually has
  *  material to back them — no chip should ever lead to an empty answer. */
 function buildQuickActions(report: SmartReport): string[] {
-  const actions = ["Explain that more simply"];
+  // "Explain more simply" already lives under every message, so this
+  // row is reserved for things that need the WHOLE report to answer —
+  // the actual reason to pay for this instead of searching a symptom.
+  const actions = ["What matters most in my results?"];
   if (report.diet_plan || report.wellness.dietary_recommendation) {
     actions.push("What should I eat or avoid?");
   }
