@@ -44,6 +44,7 @@ export default function App() {
         sessionId={result.session_id}
         infographic={result.infographic}
         starterQuestions={result.starter_questions}
+        report={result.report}
         onSessionExpired={handleSessionExpired}
       />
     </>
