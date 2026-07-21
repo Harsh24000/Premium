@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Literal
 
@@ -21,6 +22,25 @@ from .store import Session, get_session, save_session
 settings = get_settings()
 
 app = FastAPI(title="NirogGyan Premium API")
+logger = logging.getLogger("niroggyan.errors")
+
+
+def _friendly_groq_error(exc: Exception, context: str) -> HTTPException:
+    """
+    Groq's raw error includes internal account details — org ID, exact
+    TPM limits, a billing upgrade URL — none of which a patient should
+    ever see (confirmed happening: a real large report hit an 8000 TPM
+    cap and the full Groq error JSON was shown directly in the intake
+    screen). Log the real thing server-side, tell the user something
+    useful without the internals.
+    """
+    logger.error("%s failed: %s", context, exc, exc_info=True)
+    if isinstance(exc, groq.RateLimitError):
+        return HTTPException(
+            503,
+            "This report needs more processing capacity than we have available right now. Please try again in a minute.",
+        )
+    return HTTPException(502, f"{context} didn't go through. Please try again in a moment.")
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,7 +141,7 @@ async def submit_raw_report(raw: dict, request: Request) -> SubmitReportResponse
     try:
         generated = generate_smart_report_from_raw(raw)
     except groq.APIError as exc:
-        raise HTTPException(502, f"Report generation failed: {exc}") from exc
+        raise _friendly_groq_error(exc, "Report generation") from exc
 
     try:
         parsed = safe_parse_smart_report(generated)
@@ -158,7 +178,7 @@ async def upload_report_pdf(request: Request, file: UploadFile = File(...)) -> S
     try:
         extracted = extract_smart_report_from_text(text)
     except groq.APIError as exc:
-        raise HTTPException(502, f"Extraction failed: {exc}") from exc
+        raise _friendly_groq_error(exc, "Extraction") from exc
 
     try:
         report = safe_parse_smart_report(extracted)
