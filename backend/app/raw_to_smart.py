@@ -20,14 +20,37 @@ def _get_client() -> groq.Groq:
 
 
 def _build_llm_input(patient_name: str, score: int, label: str, flat: list[FlatObservation]) -> str:
-    lines = [f"Patient: {patient_name}", f"Computed wellness score: {score} ({label}) — write your greeting/descriptor to match this band, don't invent your own score.", ""]
+    """
+    Grouped by panel, with the panel name printed once rather than
+    repeated on every observation line. Measured against a real 110-
+    observation report: the old flat per-line format (which repeated the
+    full panel name, e.g. "COMPLETE BLOOD COUNT (CBC/HAEMOGRAM) NRL", on
+    all 25 lines of that one panel) cost ~4,325 tokens; this format cuts
+    that meaningfully. That matters beyond raw cost — large real reports
+    were hitting Groq's per-minute token limit outright (requested ~9,600
+    against an 8,000 TPM cap on the on_demand tier), so this isn't just
+    cheaper, it's the difference between the request succeeding at all
+    on a larger account's default limits.
+    """
+    lines = [
+        f"Patient: {patient_name}",
+        f"Computed wellness score: {score} ({label}) — write your greeting/descriptor to match this band, don't invent your own score.",
+        "",
+    ]
+
+    panels: dict[str, list[FlatObservation]] = {}
     for obs in flat:
-        status_str = obs.status if obs.status is not None else "null (classify this one)"
-        lines.append(
-            f"- name={obs.name!r}, value={obs.raw_value!r}, unit={obs.unit!r}, "
-            f"range=({obs.min_value}-{obs.max_value}), panel_hint={obs.panel_name!r}, "
-            f"test_type={obs.test_type!r}, computed_status={status_str}"
-        )
+        panels.setdefault(obs.panel_name, []).append(obs)
+
+    for panel_name, obs_list in panels.items():
+        lines.append(f"## {panel_name}")
+        for obs in obs_list:
+            range_str = f"[{obs.min_value}-{obs.max_value}]" if obs.min_value and obs.max_value else "[no range]"
+            status_str = obs.status if obs.status is not None else "classify"
+            unit = obs.unit or ""
+            lines.append(f"{obs.name}: {obs.raw_value} {unit} {range_str} {status_str}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
