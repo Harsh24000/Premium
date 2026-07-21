@@ -1,16 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { streamChat, SessionExpiredError } from "../api";
-import type { ChatMessage, InfographicSummary } from "../types";
+import type { ChatMessage, InfographicSummary, SmartReport } from "../types";
 import MarkdownLite from "./MarkdownLite";
 
 interface Props {
   sessionId: string;
   infographic: InfographicSummary;
   starterQuestions: string[];
+  report: SmartReport;
   onSessionExpired: () => Promise<string>;
 }
 
 const SUGGESTIONS_MARKER = "|SUGGESTIONS|";
+const SIMPLIFY_PROMPT = "Can you explain that again in even simpler, everyday words?";
 
 /** Split the model's reply from its trailing follow-up questions.
  *  While a reply is still streaming the marker can arrive a character at
@@ -34,7 +36,35 @@ function parseAssistantMessage(content: string): { text: string; suggestions: st
   return { text, suggestions };
 }
 
-export default function ChatWidget({ sessionId, infographic, starterQuestions, onSessionExpired }: Props) {
+/** Quick-action chips above the input. "Explain more simply" is always
+ *  available; the rest only appear when the report actually has
+ *  material to back them — no chip should ever lead to an empty answer. */
+function buildQuickActions(report: SmartReport): string[] {
+  const actions = ["Explain that more simply"];
+  if (report.diet_plan || report.wellness.dietary_recommendation) {
+    actions.push("What should I eat or avoid?");
+  }
+  if (report.isolated_abnormalities && report.isolated_abnormalities.length > 0) {
+    actions.push("Do I need any more tests?");
+  }
+  if (report.wellness.next_steps.length > 0) {
+    actions.push("What should I do next?");
+  }
+  if (report.health_summary_index.abnormal_count > 0 || report.wellness.critical_alert) {
+    actions.push("Is anything here serious?");
+  }
+  return actions;
+}
+
+function TypingDots() {
+  return (
+    <span className="typing" aria-label="Dr. Gyan is typing">
+      <span /><span /><span />
+    </span>
+  );
+}
+
+export default function ChatWidget({ sessionId, infographic, starterQuestions, report, onSessionExpired }: Props) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -43,9 +73,12 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const currentSessionId = useRef(sessionId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const quickActions = useRef(buildQuickActions(report)).current;
 
   useEffect(() => {
     currentSessionId.current = sessionId;
@@ -62,7 +95,8 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
     }
   }, [open]);
 
-  // Escape closes the panel — expected of any floating overlay.
+  // Escape closes the panel — expected of any floating overlay, and on
+  // mobile this is now a full screen so it doubles as the "back" gesture.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -129,6 +163,17 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
     }
   }
 
+  async function copyMessage(text: string, idx: number) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1600);
+    } catch {
+      // Clipboard access can fail (permissions, insecure context) — not
+      // worth surfacing as an error, the button simply won't confirm.
+    }
+  }
+
   const unread = !seen && infographic.intro_message ? 1 : 0;
   const noUserTurnsYet = !messages.some((m) => m.role === "user");
 
@@ -144,7 +189,7 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
   }
 
   return (
-    <aside className="chatpanel" role="dialog" aria-label="Chat with Dr. Gyan">
+    <aside className="chatpanel" role="dialog" aria-label="Chat with Dr. Gyan" aria-modal="true">
       <header className="chathead">
         <div className="chathead__avatar" aria-hidden="true">🩺</div>
         <div>
@@ -177,9 +222,21 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
                 ) : recovering ? (
                   "Reconnecting…"
                 ) : isStreaming ? (
-                  "…"
+                  <TypingDots />
                 ) : null}
               </div>
+
+              {text && !isStreaming && (
+                <div className="msgactions">
+                  <button className="msgaction" onClick={() => copyMessage(text, i)}>
+                    {copiedIdx === i ? "Copied ✓" : "Copy"}
+                  </button>
+                  <button className="msgaction" onClick={() => sendMessage(SIMPLIFY_PROMPT)}>
+                    Explain more simply
+                  </button>
+                </div>
+              )}
+
               {suggestions.length > 0 && !isStreaming && (
                 <div className="suggests">
                   {suggestions.map((s, si) => (
@@ -204,6 +261,14 @@ export default function ChatWidget({ sessionId, infographic, starterQuestions, o
         )}
 
         <div ref={bottomRef} />
+      </div>
+
+      <div className="quickrow">
+        {quickActions.map((q, i) => (
+          <button key={i} className="quickchip" onClick={() => sendMessage(q)} disabled={loading}>
+            {q}
+          </button>
+        ))}
       </div>
 
       <div className="chatbar">
