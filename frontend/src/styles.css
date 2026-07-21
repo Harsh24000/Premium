@@ -549,29 +549,31 @@ button { font-family: inherit; cursor: pointer; }
 /* ---------------- Chat launcher (bottom-left) ---------------- */
 .chatfab {
   position: fixed;
-  left: 1.5rem;
-  bottom: 1.5rem;
+  left: 1.25rem;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
   z-index: 60;
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.7rem 1.15rem 0.7rem 0.75rem;
+  padding: 0.85rem 1.3rem 0.85rem 0.8rem;
   border: none;
   border-radius: 999px;
   background: var(--navy);
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-weight: 700;
   box-shadow: var(--shadow-float);
   transition: transform 0.15s ease;
+  min-height: 56px;
 }
 .chatfab:hover { transform: translateY(-2px); }
 .chatfab__avatar {
-  width: 30px; height: 30px;
+  width: 36px; height: 36px;
   border-radius: 50%;
   display: grid; place-items: center;
   background: var(--accent);
-  font-size: 0.95rem;
+  font-size: 1.15rem;
+  flex: none;
 }
 .chatfab__dot {
   width: 8px; height: 8px;
@@ -644,10 +646,11 @@ button { font-family: inherit; cursor: pointer; }
   background: rgba(255,255,255,0.12);
   border: none;
   color: #fff;
-  width: 28px; height: 28px;
-  border-radius: 6px;
-  font-size: 0.95rem;
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  font-size: 1.1rem;
   line-height: 1;
+  flex: none;
 }
 .chathead__close:hover { background: rgba(255,255,255,0.22); }
 
@@ -736,6 +739,74 @@ button { font-family: inherit; cursor: pointer; }
   border-top: 1px solid var(--line-soft);
 }
 
+/* Typing indicator — three bouncing dots, shown while a reply streams
+   in with no content yet. */
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  padding: 0.15rem 0;
+}
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.5;
+  animation: typing-bounce 1.1s infinite ease-in-out;
+}
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Actions under an assistant bubble — copy, simplify further. Only
+   shown once a reply has finished streaming. */
+.msgactions {
+  display: flex;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-top: -0.2rem;
+}
+.msgaction {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.msgaction:hover { background: var(--line-soft); color: var(--body); }
+
+/* Quick-action chip row, sits above the input — always-available
+   shortcuts distinct from the per-answer follow-up suggestions. */
+.quickrow {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.65rem 0;
+  scrollbar-width: none;
+}
+.quickrow::-webkit-scrollbar { display: none; }
+.quickchip {
+  flex: none;
+  white-space: nowrap;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--body);
+}
+.quickchip:hover { border-color: var(--accent-line); background: var(--accent-wash); color: var(--accent-dark); }
+.quickchip:disabled { opacity: 0.45; }
+
 /* ---------------- Intake ---------------- */
 .intake {
   min-height: 100vh;
@@ -800,6 +871,31 @@ button { font-family: inherit; cursor: pointer; }
   .reporthead h1 { font-size: 1.75rem; }
   .scorerow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .gauge { grid-column: 1 / -1; margin: 0 auto; }
-  .chatpanel { left: 0; right: 0; bottom: 0; width: 100%; max-width: 100%; height: 82vh; border-radius: var(--r-lg) var(--r-lg) 0 0; }
-  .chatfab { left: 1rem; bottom: 1rem; }
+}
+
+/* 90% of traffic is mobile, so below this width the chat isn't a
+   floating panel at all — it's the whole screen, edge to edge, with
+   safe-area padding for notches and home-indicator bars. */
+@media (max-width: 720px) {
+  .chatpanel {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100dvh;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+  .chathead {
+    padding-top: calc(0.8rem + env(safe-area-inset-top));
+  }
+  .chatbar {
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom));
+  }
+  .chatfab {
+    left: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
 }
