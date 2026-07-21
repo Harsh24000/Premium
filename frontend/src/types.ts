@@ -36,6 +36,12 @@ export interface Parameter {
   explanation: string | null;
   common_reasons: string[] | null;
   diet_suggestions: string[] | null;
+  history: HistoricalPoint[] | null;
+}
+
+export interface HistoricalPoint {
+  date: string;
+  value: number;
 }
 
 export interface Panel {
@@ -119,6 +125,7 @@ export interface SubmitReportResponse {
   session_id: string;
   infographic: InfographicSummary;
   starter_questions: string[];
+  report: SmartReport;
 }
 
 export interface ChatMessage {
