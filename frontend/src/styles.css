@@ -728,6 +728,118 @@ button { font-family: inherit; cursor: pointer; }
 }
 .chatbar button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.chatbar__field {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.chatbar__field input { width: 100%; padding-right: 3.6rem; }
+.charcount {
+  position: absolute;
+  right: 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.charcount--over { color: var(--bad); }
+
+/* Prominent quota banner — sits right under the header so remaining
+   questions are seen at a glance, not buried in a status line. */
+.quotabar {
+  padding: 0.65rem 0.9rem 0.8rem;
+  background: #fff;
+  border-bottom: 1px solid var(--line-soft);
+}
+.quotabar__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+.quotabar__text { font-size: 1rem; font-weight: 800; color: var(--ink); }
+.quotabar__plan { font-size: 0.72rem; font-weight: 700; color: var(--muted); }
+.quotabar__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.quotabar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.quotabar--low .quotabar__fill { background: var(--warn); }
+.quotabar--low .quotabar__text { color: var(--warn); }
+.quotabar--empty .quotabar__fill { background: var(--bad); }
+.quotabar--empty .quotabar__text { color: var(--bad); }
+
+/* Standard / expert mode toggle */
+.modetoggle {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.6rem 0.9rem 0;
+}
+.modetoggle__opt {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+.modetoggle__opt--active {
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+  color: var(--accent-dark);
+}
+.modetoggle__badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #fff;
+}
+.modetoggle__hint {
+  margin: 0.4rem 0.9rem 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Shown once a session has used its full message quota. */
+.paywall {
+  align-self: center;
+  text-align: center;
+  max-width: 92%;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  padding: 1rem 1.15rem;
+}
+.paywall__title { font-size: 0.95rem; font-weight: 700; color: var(--accent-dark); margin-bottom: 0.35rem; }
+.paywall p { margin: 0 0 0.75rem; font-size: 0.83rem; color: var(--body); }
+.paywall__cta {
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 0.55rem 1.1rem;
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+.paywall__cta:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .chatfoot {
   padding: 0.4rem;
   text-align: center;
