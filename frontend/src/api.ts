@@ -41,6 +41,23 @@ export async function fetchMockReport(): Promise<SmartReport> {
   return res.json();
 }
 
+/** Calls the backend's plan-activation STUB (see main.py) — there is no
+ * payment verification behind this at all. It exists today only so the
+ * frontend can restore a session's plan after an in-memory session is
+ * lost and recreated (see App.tsx's handleSessionExpired). Once a real
+ * payment gateway exists, this call must only ever happen server-side,
+ * from a verified payment webhook — never triggered by a button in the
+ * UI, or anyone could grant themselves the paid quota for free. */
+export async function activatePlan(sessionId: string, plan: string): Promise<{ plan: string; quota: number }> {
+  const res = await fetch(`${BASE}/session/${sessionId}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan }),
+  });
+  if (!res.ok) throw new Error(`Could not activate plan (${res.status})`);
+  return res.json();
+}
+
 /** Thrown specifically on 404 — the backend's in-memory session was lost
  * (Render free-tier spin-down, or a redeploy). Distinguished from other
  * failures so the caller can recover by resubmitting instead of just
@@ -52,24 +69,113 @@ export class SessionExpiredError extends Error {
   }
 }
 
+/** Thrown on 402 — either the session is fully out of credits
+ * ("quota_exceeded"), or it has some credits left but not enough for
+ * the mode requested ("insufficient_credits_for_mode" — e.g. 1 credit
+ * left, expert mode needs 2). The two need different UI: full paywall
+ * vs "try standard mode instead". */
+export class QuotaExceededError extends Error {
+  plan: string;
+  quota: number;
+  remaining: number;
+  needed: number;
+  insufficientForMode: boolean;
+  constructor(
+    message: string,
+    plan: string,
+    quota: number,
+    remaining: number,
+    needed: number,
+    insufficientForMode: boolean,
+  ) {
+    super(message);
+    this.name = "QuotaExceededError";
+    this.plan = plan;
+    this.quota = quota;
+    this.remaining = remaining;
+    this.needed = needed;
+    this.insufficientForMode = insufficientForMode;
+  }
+}
+
+/** Thrown on 422 — the message exceeded the per-message length limit.
+ * Character count is the primary constraint (see plans.py); word count
+ * rides along as a secondary check. */
+export class MessageTooLongError extends Error {
+  maxChars: number;
+  charCount: number;
+  constructor(message: string, maxChars: number, charCount: number) {
+    super(message);
+    this.name = "MessageTooLongError";
+    this.maxChars = maxChars;
+    this.charCount = charCount;
+  }
+}
+
+/** Thrown on 422 — the message read as more than one question stacked
+ * together (question marks, numbered lists, multiple question-shaped
+ * clauses). Separate from MessageTooLongError because the fix is
+ * different: this message might already be short, it's the shape of
+ * it that's the problem. */
+export class MultipleQuestionsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MultipleQuestionsError";
+  }
+}
+
+export interface ChatUsage {
+  remaining: number;
+  quota: number;
+}
+
 export async function streamChat(
   sessionId: string,
   message: string,
+  mode: "standard" | "expert",
   onChunk: (text: string) => void,
-): Promise<void> {
+): Promise<ChatUsage> {
   const res = await fetch(`${BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({ session_id: sessionId, message, mode }),
   });
   if (res.status === 404) {
     const detail = await res.json().catch(() => ({}));
-    throw new SessionExpiredError(detail.detail || "Session expired.");
+    throw new SessionExpiredError(detail.detail?.detail || detail.detail || "Session expired.");
+  }
+  if (res.status === 402) {
+    const detail = await res.json().catch(() => ({}));
+    const d = detail.detail || {};
+    throw new QuotaExceededError(
+      d.detail || "Question limit reached.",
+      d.plan ?? "trial",
+      d.quota ?? 0,
+      d.remaining ?? 0,
+      d.needed ?? 1,
+      d.error === "insufficient_credits_for_mode",
+    );
+  }
+  if (res.status === 422) {
+    const detail = await res.json().catch(() => ({}));
+    const d = detail.detail || {};
+    if (d.error === "multiple_questions") {
+      throw new MultipleQuestionsError(d.detail || "That looks like more than one question.");
+    }
+    throw new MessageTooLongError(
+      d.detail || "That message is too long.",
+      d.max_chars ?? 75,
+      d.char_count ?? 0,
+    );
   }
   if (!res.ok || !res.body) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.detail || `Chat failed (${res.status})`);
   }
+
+  const remainingHeader = res.headers.get("X-Messages-Remaining");
+  const quotaHeader = res.headers.get("X-Messages-Quota");
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   for (;;) {
@@ -77,4 +183,9 @@ export async function streamChat(
     if (done) break;
     onChunk(decoder.decode(value, { stream: true }));
   }
+
+  return {
+    remaining: remainingHeader !== null ? parseInt(remainingHeader, 10) : 0,
+    quota: quotaHeader !== null ? parseInt(quotaHeader, 10) : 0,
+  };
 }
