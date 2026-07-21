@@ -19,7 +19,7 @@ from .raw_models import RawLabExport, RawObservation
 # risks an invented-sounding answer for something that was never a real
 # question in the first place.
 _NON_CLINICAL_NAME_PATTERN = re.compile(
-    r"time of collection|specimen type|sample type", re.IGNORECASE
+    r"time of collection|specimen type|sample type|^comment$", re.IGNORECASE
 )
 
 
@@ -49,10 +49,12 @@ class FlatObservation:
         of what qualitative results normally mean (e.g. 'Negative' for
         urine nitrite is normal) — that's applying medical convention,
         not inventing a number.
-        """
-        if _NON_CLINICAL_NAME_PATTERN.search(self.name):
-            return "normal"  # metadata field, never sent to the LLM for judgment
 
+        Non-clinical metadata names (comments, sample-type notes) never
+        reach this class at all — flatten_observations excludes them
+        before a FlatObservation is constructed, so there's no need to
+        special-case them here too.
+        """
         try:
             value = float(self.raw_value)
             low = float(self.min_value)
@@ -90,6 +92,15 @@ def flatten_observations(raw: RawLabExport) -> list[FlatObservation]:
             panel_name = investigation.test_name or investigation.test_type or "General"
             for obs in investigation.observations:
                 if not obs.name:
+                    continue
+                # "Comment" entries are free-text lab notes (reference-range
+                # guidance, methodology caveats) with a blank value — not a
+                # test result. Confirmed against real data: 24 occurrences
+                # across the sample files, always with value="". Excluded
+                # here entirely rather than included with a neutralized
+                # status — no point spending tokens sending the LLM a fake
+                # "observation" that was never a real question.
+                if _NON_CLINICAL_NAME_PATTERN.search(obs.name):
                     continue
                 flat.append(FlatObservation(panel_name, investigation.test_type, obs))
 
