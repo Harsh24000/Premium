@@ -599,9 +599,9 @@ button { font-family: inherit; cursor: pointer; }
   left: 1.5rem;
   bottom: 1.5rem;
   z-index: 61;
-  width: 384px;
+  width: 460px;
   max-width: calc(100vw - 2rem);
-  height: 580px;
+  height: min(760px, calc(100vh - 3rem));
   max-height: calc(100vh - 3rem);
   display: flex;
   flex-direction: column;
@@ -875,8 +875,13 @@ button { font-family: inherit; cursor: pointer; }
 
 /* 90% of traffic is mobile, so below this width the chat isn't a
    floating panel at all — it's the whole screen, edge to edge, with
-   safe-area padding for notches and home-indicator bars. */
-@media (max-width: 720px) {
+   safe-area padding for notches and home-indicator bars. 820px covers
+   phones and portrait tablets (iPad mini is 768px wide); anything
+   wider than that has enough room for a floating panel next to the
+   dashboard, which is intentional, not a bug — verify by narrowing
+   the actual browser window below this, or using a device emulator,
+   rather than testing on a full-width desktop window. */
+@media (max-width: 820px) {
   .chatpanel {
     left: 0;
     right: 0;
