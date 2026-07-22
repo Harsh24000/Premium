@@ -118,8 +118,14 @@ export class MultipleQuestionsError extends Error {
 }
 
 export interface ChatUsage {
-  remaining: number;
-  quota: number;
+  // Nullable rather than defaulting to 0 on a missing header — 0 reads
+  // as "fully exhausted," which is the worst possible wrong answer if
+  // the header is ever unreadable for some other reason in the future
+  // (this exact bug, caused by a missing CORS expose_headers config,
+  // made every real quota look exhausted after one message). null lets
+  // the caller keep showing the last known-good count instead.
+  remaining: number | null;
+  quota: number | null;
 }
 
 export async function streamChat(
@@ -176,7 +182,7 @@ export async function streamChat(
   }
 
   return {
-    remaining: remainingHeader !== null ? parseInt(remainingHeader, 10) : 0,
-    quota: quotaHeader !== null ? parseInt(quotaHeader, 10) : 0,
+    remaining: remainingHeader !== null ? parseInt(remainingHeader, 10) : null,
+    quota: quotaHeader !== null ? parseInt(quotaHeader, 10) : null,
   };
 }
