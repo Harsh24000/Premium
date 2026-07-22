@@ -79,31 +79,15 @@ export class SessionExpiredError extends Error {
 }
 
 /** Thrown on 402 — either the session is fully out of credits
- * ("quota_exceeded"), or it has some credits left but not enough for
- * the mode requested ("insufficient_credits_for_mode" — e.g. 1 credit
- * left, expert mode needs 2). The two need different UI: full paywall
- * vs "try standard mode instead". */
+ * ("quota_exceeded") — the session has used its full question quota. */
 export class QuotaExceededError extends Error {
   plan: string;
   quota: number;
-  remaining: number;
-  needed: number;
-  insufficientForMode: boolean;
-  constructor(
-    message: string,
-    plan: string,
-    quota: number,
-    remaining: number,
-    needed: number,
-    insufficientForMode: boolean,
-  ) {
+  constructor(message: string, plan: string, quota: number) {
     super(message);
     this.name = "QuotaExceededError";
     this.plan = plan;
     this.quota = quota;
-    this.remaining = remaining;
-    this.needed = needed;
-    this.insufficientForMode = insufficientForMode;
   }
 }
 
@@ -141,13 +125,12 @@ export interface ChatUsage {
 export async function streamChat(
   sessionId: string,
   message: string,
-  mode: "standard" | "expert",
   onChunk: (text: string) => void,
 ): Promise<ChatUsage> {
   const res = await fetch(`${BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, message, mode }),
+    body: JSON.stringify({ session_id: sessionId, message }),
   });
   if (res.status === 404) {
     const detail = await res.json().catch(() => ({}));
@@ -160,9 +143,6 @@ export async function streamChat(
       d.detail || "Question limit reached.",
       d.plan ?? "trial",
       d.quota ?? 0,
-      d.remaining ?? 0,
-      d.needed ?? 1,
-      d.error === "insufficient_credits_for_mode",
     );
   }
   if (res.status === 422) {
