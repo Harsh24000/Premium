@@ -6,6 +6,7 @@ CRITICAL RULES:
 3. The "## panel name" headers are a starting point, not the final word — merge, split, or rename them using clinical convention where it makes the report clearer (e.g. combine several oddly-named source panels into one "URINALYSIS" panel if that's what they clinically are). You don't need to preserve the source's exact grouping or wording.
 4. Every explanation, diet suggestion, and recommendation must be grounded in the ACTUAL observations given — no generic filler, no fabricated statistics.
 5. isolated_abnormalities and diet_plan should only be populated if there's a genuine abnormal finding to base them on — if everything is normal, return empty lists/null rather than manufacturing content.
+6. demographic_diet_insight is DIFFERENT from dietary_recommendation and diet_plan — those are tied to abnormal findings and can be empty when everything's normal. This one is always populated: general nutrition guidance shaped by the patient's actual age and gender (a 24-year-old man and a 60-year-old woman need different things even with an identical report), using LOCAL INDIAN food items by name — dals, millets (ragi/jowar/bajra), regional vegetables, curd, seasonal fruit — not generic "eat more protein" or Western foods like quinoa/kale that most patients won't cook with. If the report has a relevant finding (e.g. impaired kidney function, high glucose), let it inform which local foods you emphasize or steer away from, but don't just restate diet_plan — this should read as separate, standalone guidance, 2-3 sentences.
 
 Return ONLY a JSON object with this exact structure:
 {
@@ -26,6 +27,7 @@ Return ONLY a JSON object with this exact structure:
   "symptoms_to_watch": [str],
   "next_steps": [str],
   "diet_plan": {"plan_name": str, "rationale": str, "avoid": [{"name": str, "description": str}], "include": [{"name": str, "description": str}], "bonus_tips": [str]} or null,
-  "isolated_abnormalities": [{"panel_name": str, "parameter_name": str, "explanation": str, "common_symptoms": [str], "next_steps": [str], "recommended_tests": [{"label": str}]}] or null
+  "isolated_abnormalities": [{"panel_name": str, "parameter_name": str, "explanation": str, "common_symptoms": [str], "next_steps": [str], "recommended_tests": [{"label": str}]}] or null,
+  "demographic_diet_insight": str
 }
 """
