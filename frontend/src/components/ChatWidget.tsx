@@ -169,8 +169,10 @@ export default function ChatWidget({
           return next;
         });
       });
-      setRemaining(usage.remaining);
-      setQuota(usage.quota);
+      // null means the header was missing/unreadable (see api.ts) —
+      // keep showing the last known-good count rather than guessing.
+      if (usage.remaining !== null) setRemaining(usage.remaining);
+      if (usage.quota !== null) setQuota(usage.quota);
     } catch (err) {
       if (err instanceof SessionExpiredError && !isRetry) {
         setLoading(false);
