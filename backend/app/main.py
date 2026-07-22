@@ -47,6 +47,16 @@ app.add_middleware(
     allow_credentials=False,  # no cookie-based auth here — this also avoids the wildcard+credentials CORS conflict
     allow_methods=["*"],
     allow_headers=["*"],
+    # Without this, browsers hide custom response headers from JS by
+    # default — allow_headers only covers REQUEST headers, not response
+    # ones. api.ts reads X-Messages-Remaining/-Quota via res.headers.get()
+    # after every chat call; without exposing them, that silently returns
+    # null and the frontend falls back to 0, making quota look exhausted
+    # after the very first real message even though the backend's actual
+    # count is fine. This is invisible to curl/direct testing since CORS
+    # is a browser-enforced restriction, not a server one — confirmed
+    # this way after main.py/plans.py/store.py all checked out correct.
+    expose_headers=["X-Messages-Remaining", "X-Messages-Quota"],
 )
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
