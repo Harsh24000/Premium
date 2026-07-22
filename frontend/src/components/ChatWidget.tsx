@@ -9,8 +9,6 @@ import {
 import type { ChatMessage, InfographicSummary, SmartReport } from "../types";
 import MarkdownLite from "./MarkdownLite";
 
-type Mode = "standard" | "expert";
-
 interface Props {
   sessionId: string;
   infographic: InfographicSummary;
@@ -25,7 +23,6 @@ interface Props {
 const SUGGESTIONS_MARKER = "|SUGGESTIONS|";
 const SIMPLIFY_PROMPT = "Can you explain that again in even simpler, everyday words?";
 const MAX_CHARS = 75; // mirrors backend/app/plans.py MAX_MESSAGE_CHARS — keep in sync
-const MODE_COST: Record<Mode, number> = { standard: 1, expert: 2 }; // mirrors plans.py MODE_CREDIT_COST
 
 /** Split the model's reply from its trailing follow-up questions.
  *  While a reply is still streaming the marker can arrive a character at
@@ -78,11 +75,6 @@ function TypingDots() {
   );
 }
 
-const PLAN_LABEL: Record<string, string> = {
-  trial: "Free trial",
-  basic_99: "₹99 plan",
-};
-
 export default function ChatWidget({
   sessionId,
   infographic,
@@ -95,7 +87,6 @@ export default function ChatWidget({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(false);
-  const [mode, setMode] = useState<Mode>("standard");
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     infographic.intro_message ? [{ role: "assistant", content: infographic.intro_message }] : []
   );
@@ -113,7 +104,6 @@ export default function ChatWidget({
   const chars = input.length;
   const overLimit = chars > MAX_CHARS;
   const outOfQuota = remaining <= 0;
-  const cantAffordExpertMode = mode === "expert" && remaining < MODE_COST.expert && remaining > 0;
 
   useEffect(() => {
     currentSessionId.current = sessionId;
@@ -155,16 +145,6 @@ export default function ChatWidget({
       ]);
       return;
     }
-    if (mode === "expert" && remaining < MODE_COST.expert) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Expert mode needs ${MODE_COST.expert} credits and you have ${remaining} left. Switch to standard mode, or upgrade for more.`,
-        },
-      ]);
-      return;
-    }
 
     if (!isRetry) {
       setInput("");
@@ -179,7 +159,7 @@ export default function ChatWidget({
     setLoading(true);
 
     try {
-      const usage = await streamChat(currentSessionId.current, trimmed, mode, (chunk) => {
+      const usage = await streamChat(currentSessionId.current, trimmed, (chunk) => {
         setMessages((prev) => {
           const next = [...prev];
           next[next.length - 1] = {
@@ -215,15 +195,13 @@ export default function ChatWidget({
         }
       }
       if (err instanceof QuotaExceededError) {
-        setRemaining(err.remaining);
+        setRemaining(0);
         setQuota(err.quota);
         setMessages((prev) => [
           ...prev.slice(0, -1),
           {
             role: "assistant",
-            content: err.insufficientForMode
-              ? `Expert mode needs ${err.needed} credits — you have ${err.remaining} left. Try standard mode, or upgrade for more.`
-              : `You've used all ${err.quota} questions on your ${PLAN_LABEL[err.plan] ?? err.plan}. Upgrade to keep the conversation going.`,
+            content: `You've used all ${err.quota} questions. Get 10 more for ₹50 to keep chatting.`,
           },
         ]);
         setLoading(false);
@@ -303,40 +281,19 @@ export default function ChatWidget({
       </header>
 
       {/* Prominent quota banner — the count and its depletion are meant
-          to be seen at a glance, not buried in a status line. */}
+          to be seen at a glance, not buried in a status line. No plan
+          label here on purpose — "questions left" reads as a paid
+          allowance, which is what this actually is. */}
       <div className={`quotabar quotabar--${quotaTone}`}>
         <div className="quotabar__row">
           <span className="quotabar__text">
             {remaining} question{remaining === 1 ? "" : "s"} left
           </span>
-          <span className="quotabar__plan">{PLAN_LABEL[plan] ?? plan}</span>
         </div>
         <div className="quotabar__track">
           <div className="quotabar__fill" style={{ width: `${depletionPct}%` }} />
         </div>
       </div>
-
-      <div className="modetoggle" role="radiogroup" aria-label="Answer depth">
-        <button
-          className={`modetoggle__opt ${mode === "standard" ? "modetoggle__opt--active" : ""}`}
-          role="radio"
-          aria-checked={mode === "standard"}
-          onClick={() => setMode("standard")}
-        >
-          Standard
-        </button>
-        <button
-          className={`modetoggle__opt ${mode === "expert" ? "modetoggle__opt--active" : ""}`}
-          role="radio"
-          aria-checked={mode === "expert"}
-          onClick={() => setMode("expert")}
-        >
-          Expert <span className="modetoggle__badge">2x</span>
-        </button>
-      </div>
-      {mode === "expert" && (
-        <p className="modetoggle__hint">Deeper clinical detail and guideline references — costs 2 credits per question.</p>
-      )}
 
       <div className="chatlog">
         {messages.map((m, i) => {
@@ -400,13 +357,16 @@ export default function ChatWidget({
         {outOfQuota && (
           <div className="paywall">
             <div className="paywall__title">You're out of questions</div>
-            <p>
-              You've used all {quota} on your {PLAN_LABEL[plan] ?? plan}. Upgrade to keep talking with Dr. Gyan
-              about this report.
-            </p>
-            <button className="paywall__cta" disabled title="Payment integration coming soon">
-              Upgrade — coming soon
-            </button>
+            <p>You've used all {quota} questions on this report. Get more to keep talking with Dr. Gyan.</p>
+            {/* Real copy, but still not wired to a real charge — there's
+                no payment gateway behind this yet (see main.py's plan-
+                activation stub). This opens a contact channel rather than
+                silently granting credits, which a fake "pay" button would
+                either do nothing or do for free — replace mailto with a
+                real checkout link once a gateway exists. */}
+            <a className="paywall__cta" href="mailto:support@niroggyan.com?subject=Get%2010%20more%20questions">
+              Get 10 more questions for ₹50
+            </a>
           </div>
         )}
 
@@ -430,7 +390,7 @@ export default function ChatWidget({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !overLimit && sendMessage(input)}
-            placeholder={outOfQuota ? "Upgrade to keep chatting" : "Ask about your report…"}
+            placeholder={outOfQuota ? "Get more questions to keep chatting" : "Ask about your report…"}
             disabled={loading || outOfQuota}
             aria-label="Message Dr. Gyan"
             maxLength={MAX_CHARS + 20}
@@ -443,7 +403,7 @@ export default function ChatWidget({
         </div>
         <button
           onClick={() => sendMessage(input)}
-          disabled={loading || outOfQuota || !input.trim() || overLimit || cantAffordExpertMode}
+          disabled={loading || outOfQuota || !input.trim() || overLimit}
           aria-label="Send message"
         >
           ➤
