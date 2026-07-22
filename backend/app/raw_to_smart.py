@@ -19,7 +19,9 @@ def _get_client() -> groq.Groq:
     return _client
 
 
-def _build_llm_input(patient_name: str, score: int, label: str, flat: list[FlatObservation]) -> str:
+def _build_llm_input(
+    patient_name: str, age: str, gender: str, score: int, label: str, flat: list[FlatObservation]
+) -> str:
     """
     Grouped by panel, with the panel name printed once rather than
     repeated on every observation line. Measured against a real 110-
@@ -31,9 +33,14 @@ def _build_llm_input(patient_name: str, score: int, label: str, flat: list[FlatO
     against an 8,000 TPM cap on the on_demand tier), so this isn't just
     cheaper, it's the difference between the request succeeding at all
     on a larger account's default limits.
+
+    Age/gender are included specifically so demographic_diet_insight (see
+    prompt) has something real to work from — age and sex both change
+    which foods and portions actually make sense to suggest.
     """
     lines = [
         f"Patient: {patient_name}",
+        f"Age: {age or 'unknown'}, Gender: {gender or 'unknown'}",
         f"Computed wellness score: {score} ({label}) — write your greeting/descriptor to match this band, don't invent your own score.",
         "",
     ]
@@ -71,7 +78,7 @@ def generate_smart_report_from_raw(raw_data: dict) -> dict:
     provisional_score = compute_wellness_score(flat, llm_classified_abnormal=set())
     provisional_label = score_to_label(provisional_score)
 
-    llm_input = _build_llm_input(raw.PName, provisional_score, provisional_label, flat)
+    llm_input = _build_llm_input(raw.PName, raw.Age, raw.Gender, provisional_score, provisional_label, flat)
 
     response = _get_client().chat.completions.create(
         model=_settings.chat_model,
@@ -220,6 +227,7 @@ def generate_smart_report_from_raw(raw_data: dict) -> dict:
         "panels": panels,
         "diet_plan": generated.get("diet_plan"),
         "isolated_abnormalities": generated.get("isolated_abnormalities"),
+        "demographic_diet_insight": generated.get("demographic_diet_insight"),
     }
 
 
