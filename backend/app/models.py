@@ -126,6 +126,13 @@ class SmartReport(BaseModel):
     panels: list[Panel] = []
     diet_plan: DietPlan | None = None
     isolated_abnormalities: list[IsolatedAbnormality] | None = None
+    # Distinct from diet_plan: general nutrition guidance shaped by age/
+    # gender, using local Indian food items by name — always populated
+    # (unlike diet_plan, which is only for genuine abnormal findings).
+    # Optional because reports submitted via the direct-JSON path (no
+    # LLM generation involved) won't have this unless the source JSON
+    # already includes it.
+    demographic_diet_insight: str | None = None
 
 
 def safe_parse_smart_report(data: dict) -> SmartReport:
