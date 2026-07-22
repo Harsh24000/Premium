@@ -35,26 +35,14 @@ MAX_MESSAGE_CHARS = 75
 # as a backstop, not the primary constraint.
 MAX_MESSAGE_WORDS = 15
 
-# Expert mode answers are deeper (clinical terminology, guideline
-# references) and cost roughly 2x the tokens of a standard answer — this
-# charges accordingly rather than pricing both the same. Keyed by the
-# `mode` field on ChatRequest.
-MODE_CREDIT_COST: dict[str, int] = {
-    "standard": 1,
-    "expert": 2,
-}
+# Every question costs exactly 1 credit. (Previously had a 2-credit
+# "expert mode" — removed: it was confusing in practice and not worth
+# the complexity right now.)
+MESSAGE_CREDIT_COST = 1
 
 
 def quota_for(plan: str) -> int:
     return PLAN_QUOTAS.get(plan, 0)
-
-
-def cost_for_mode(mode: str) -> int:
-    # Unknown mode strings shouldn't be reachable — ChatRequest types
-    # `mode` as a Literal, so FastAPI rejects anything else before this
-    # is ever called. Falls back to the cheaper cost only as a defensive
-    # default, never the more expensive one.
-    return MODE_CREDIT_COST.get(mode, 1)
 
 
 _QUESTION_WORDS = (
