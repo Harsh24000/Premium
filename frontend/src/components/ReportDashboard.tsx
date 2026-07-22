@@ -235,6 +235,17 @@ function SummaryView({ report, findings }: { report: SmartReport; findings: Find
           )}
         </div>
 
+        {report.demographic_diet_insight && (
+          <div className="card__pad" style={{ paddingTop: 0 }}>
+            <h3 className="sectionlabel">
+              <span aria-hidden="true">🌾</span> Diet insight for you
+            </h3>
+            <div className="dietinsight">
+              <p>{report.demographic_diet_insight}</p>
+            </div>
+          </div>
+        )}
+
         {headline.length > 0 && (
           <div className="card__pad" style={{ paddingTop: 0 }}>
             <h3 className="sectionlabel">
