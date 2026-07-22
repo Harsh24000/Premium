@@ -1,6 +1,5 @@
 import logging
 import uuid
-from typing import Literal
 
 import groq
 import pydantic
@@ -12,7 +11,7 @@ from pydantic import BaseModel
 from .config import get_settings
 from .infographic import build_infographic_summary
 from .llm_client import extract_smart_report_from_text, generate_high_risk_starter_questions, stream_chat
-from .plans import MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS, cost_for_mode, looks_like_multiple_questions, quota_for
+from .plans import MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS, looks_like_multiple_questions, quota_for
 from .models import SmartReport, safe_parse_smart_report
 from .raw_to_smart import generate_smart_report_from_raw
 from .pdf_utils import PdfExtractionError, extract_text_from_pdf
@@ -70,12 +69,6 @@ class SubmitReportResponse(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     message: str
-    # "standard" = layperson mode (plain language, the default for
-    # everyone). "expert" = health-savvy mode (clinical terminology,
-    # guideline references) — costs more credits, see plans.py.
-    # Literal here means FastAPI rejects any other value automatically,
-    # before it ever reaches cost_for_mode().
-    mode: Literal["standard", "expert"] = "standard"
 
 
 def _create_session_response(report: SmartReport) -> SubmitReportResponse:
@@ -237,34 +230,15 @@ async def chat_endpoint(req: ChatRequest):
         )
 
     quota = quota_for(session.plan)
-    cost = cost_for_mode(req.mode)
-    remaining_before = quota - session.messages_used
-
-    if remaining_before < cost:
-        if remaining_before <= 0:
-            # Nothing left at all, in either mode.
-            raise HTTPException(
-                402,
-                {
-                    "error": "quota_exceeded",
-                    "plan": session.plan,
-                    "quota": quota,
-                    "remaining": 0,
-                    "detail": "You've used all your questions on this plan. Upgrade to keep chatting.",
-                },
-            )
-        # Some credits left, just not enough for the mode they asked for
-        # (expert costs 2; someone with exactly 1 left needs this distinct
-        # message rather than being told they have nothing at all).
+    if session.messages_used >= quota:
         raise HTTPException(
             402,
             {
-                "error": "insufficient_credits_for_mode",
+                "error": "quota_exceeded",
                 "plan": session.plan,
                 "quota": quota,
-                "remaining": remaining_before,
-                "needed": cost,
-                "detail": f"Expert mode needs {cost} credits — you have {remaining_before} left. Try standard mode, or upgrade for more.",
+                "remaining": 0,
+                "detail": "You've used all your questions. Get 10 more for ₹50 to keep chatting.",
             },
         )
 
@@ -272,12 +246,12 @@ async def chat_endpoint(req: ChatRequest):
     # fails mid-stream still used a network round trip and a slot in the
     # conversation history. Given how cheap each message is (see cost
     # notes), this tradeoff isn't worth the complexity of a refund path.
-    session.messages_used += cost
+    session.messages_used += 1
     save_session(session)
     remaining = quota - session.messages_used
 
     return StreamingResponse(
-        stream_chat(session, req.message, mode=req.mode),
+        stream_chat(session, req.message),
         media_type="text/plain",
         headers={
             "X-Messages-Remaining": str(remaining),
