@@ -311,8 +311,16 @@ def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
         response_format="text",
         temperature=0.0,
     )
-    # Confirmed against the installed SDK's source: transcriptions.create
-    # always casts to the Transcription model (text: str), regardless of
-    # response_format — .text is always the right way to read this, not
-    # str(response).
+    # CONFIRMED against a real production traceback (not the SDK's type
+    # hints, which is what led this astray the first time): with
+    # response_format="text", the actual HTTP response body isn't JSON,
+    # so the client returns the raw text directly rather than casting to
+    # the Transcription model — response IS a plain str at runtime, not
+    # an object with a .text attribute. Handling both shapes here rather
+    # than asserting one, since this is now the second time an assumption
+    # about this exact call's return shape has been wrong; a live 5xx in
+    # front of a real user is a worse failure than a defensive isinstance
+    # check that costs nothing.
+    text = response if isinstance(response, str) else getattr(response, "text", "")
+    return text.strip()
     return response.text.strip()
