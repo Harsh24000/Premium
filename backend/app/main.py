@@ -306,6 +306,19 @@ async def transcribe_endpoint(session_id: str = "", file: UploadFile = File(...)
         text = transcribe_audio(data, file.filename or "voice.webm")
     except groq.APIError as exc:
         raise _friendly_groq_error(exc, "Transcription") from exc
+    except Exception as exc:
+        # Anything OTHER than groq.APIError (a connection error, an
+        # unexpected response shape, anything) was escaping completely
+        # unhandled — which the browser then reported as a CORS failure
+        # ("No Access-Control-Allow-Origin header"), since an unhandled
+        # exception can reach the client before FastAPI's normal
+        # exception handling (which is what actually attaches CORS
+        # headers to error responses) ever runs. Confirmed as the real
+        # cause of a live "Failed to fetch" that had nothing to do with
+        # CORS configuration itself — chat and report upload use the
+        # exact same CORS setup and work fine.
+        logger.error("Transcription failed (non-Groq error): %s", exc, exc_info=True)
+        raise HTTPException(502, "Transcription didn't go through. Please try again.") from exc
 
     return {"text": text}
 
