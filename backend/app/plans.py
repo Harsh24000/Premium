@@ -17,8 +17,12 @@ import re
 
 # messages allowed before the session must upgrade, keyed by plan name
 PLAN_QUOTAS: dict[str, int] = {
-    "trial": 3,       # unpaid — enough to demonstrate value, not enough to rely on
-    "basic_99": 10,    # the ₹99 plan
+    "trial": 10,       # free trial — 10 questions, no payment required
+    "basic_99": 10,    # ₹99 unlocks this after the trial; each ₹50 top-up re-grants
+                        # the same 10 (see main.py's plan-activation stub) — the price
+                        # difference between first purchase and top-up is a payment-
+                        # gateway/business-logic concern, not something this constant
+                        # encodes, since a top-up grants the identical 10-credit quota
 }
 
 DEFAULT_PLAN = "trial"
