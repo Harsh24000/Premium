@@ -10,7 +10,12 @@ from pydantic import BaseModel
 
 from .config import get_settings
 from .infographic import build_infographic_summary
-from .llm_client import extract_smart_report_from_text, generate_high_risk_starter_questions, stream_chat
+from .llm_client import (
+    extract_smart_report_from_text,
+    generate_high_risk_starter_questions,
+    stream_chat,
+    transcribe_audio,
+)
 from .plans import MAX_MESSAGE_CHARS, MAX_MESSAGE_WORDS, looks_like_multiple_questions, quota_for
 from .models import SmartReport, safe_parse_smart_report
 from .raw_to_smart import generate_smart_report_from_raw
@@ -268,6 +273,41 @@ async def chat_endpoint(req: ChatRequest):
             "X-Messages-Quota": str(quota),
         },
     )
+
+
+# 5 seconds of compressed speech audio is well under 1MB in practice;
+# this cap is generous headroom against a malformed/oversized upload,
+# not a real limit on legitimate use.
+MAX_AUDIO_BYTES = 3 * 1024 * 1024
+
+
+@app.post("/api/transcribe")
+async def transcribe_endpoint(session_id: str = "", file: UploadFile = File(...)) -> dict:
+    """
+    Voice input for the chat box. Requires a valid, non-expired session —
+    not because transcription itself costs a question credit (it
+    doesn't; only sending the resulting text through /api/chat does),
+    but so this endpoint can't be hit by a fully anonymous script with
+    no relationship to a real report at all.
+    """
+    if not settings.groq_api_key:
+        raise HTTPException(500, "Server is missing GROQ_API_KEY.")
+
+    if not get_session(session_id):
+        raise HTTPException(404, "Session not found or expired.")
+
+    data = await file.read()
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "That recording is too large — try a shorter clip.")
+    if len(data) == 0:
+        raise HTTPException(422, "No audio received — check microphone permissions and try again.")
+
+    try:
+        text = transcribe_audio(data, file.filename or "voice.webm")
+    except groq.APIError as exc:
+        raise _friendly_groq_error(exc, "Transcription") from exc
+
+    return {"text": text}
 
 
 class ActivatePlanRequest(BaseModel):
