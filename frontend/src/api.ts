@@ -186,3 +186,24 @@ export async function streamChat(
     quota: quotaHeader !== null ? parseInt(quotaHeader, 10) : null,
   };
 }
+
+/** Voice input. session_id goes as a query param (confirmed against the
+ * backend's actual generated OpenAPI schema — mixing a plain str param
+ * with a file upload in FastAPI puts the str in the query, not the
+ * multipart body), the audio blob as multipart form data. */
+export async function transcribeAudio(sessionId: string, audioBlob: Blob): Promise<string> {
+  const form = new FormData();
+  form.append("file", audioBlob, "voice.webm");
+  const res = await fetch(`${BASE}/transcribe?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const inner = body.detail;
+    const message = typeof inner === "string" ? inner : inner?.detail;
+    throw new Error(message || `Transcription failed (${res.status})`);
+  }
+  const data = await res.json();
+  return data.text as string;
+}
