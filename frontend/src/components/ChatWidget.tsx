@@ -71,8 +71,32 @@ function buildQuickActions(report: SmartReport): string[] {
 
 function TypingDots() {
   return (
-    <span className="typing" aria-label="Dr. Gyan is typing">
+    <span className="typing" aria-hidden="true">
       <span /><span /><span />
+    </span>
+  );
+}
+
+// Rotates through short status phrases while a response streams in.
+// Doesn't change actual latency at all — this is purely about how the
+// wait FEELS. Specific status text reads as "real work happening" even
+// though the wait is identical to a blank spinner; this mounts fresh
+// on every new message (see key={} at the call site) so it always
+// starts at phrase 0 immediately, not mid-cycle.
+const WAITING_PHRASES = ["Reading your report…", "Checking your results…", "Putting together an answer…"];
+
+function TypingIndicator() {
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPhraseIdx((i) => (i + 1) % WAITING_PHRASES.length);
+    }, 1400);
+    return () => clearInterval(interval);
+  }, []);
+  return (
+    <span className="typingindicator" aria-label="Dr. Gyan is typing">
+      <TypingDots />
+      <span className="typingindicator__text">{WAITING_PHRASES[phraseIdx]}</span>
     </span>
   );
 }
@@ -432,7 +456,7 @@ export default function ChatWidget({
                 ) : recovering ? (
                   "Reconnecting…"
                 ) : isStreaming ? (
-                  <TypingDots />
+                  <TypingIndicator key={i} />
                 ) : null}
               </div>
 
