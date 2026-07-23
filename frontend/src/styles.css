@@ -923,6 +923,17 @@ button { font-family: inherit; cursor: pointer; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
 
+.typingindicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.typingindicator__text {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* Actions under an assistant bubble — copy, simplify further. Only
    shown once a reply has finished streaming. */
 .msgactions {
