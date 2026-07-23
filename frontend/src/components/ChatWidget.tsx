@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type CSSProperties } from "react";
 import {
   streamChat,
+  transcribeAudio,
   SessionExpiredError,
   QuotaExceededError,
   MessageTooLongError,
@@ -23,6 +24,7 @@ interface Props {
 const SUGGESTIONS_MARKER = "|SUGGESTIONS|";
 const SIMPLIFY_PROMPT = "Can you explain that again in even simpler, everyday words?";
 const MAX_CHARS = 75; // mirrors backend/app/plans.py MAX_MESSAGE_CHARS — keep in sync
+const VOICE_MAX_MS = 5000; // voice input auto-stops at 5 seconds
 
 /** Split the model's reply from its trailing follow-up questions.
  *  While a reply is still streaming the marker can arrive a character at
@@ -86,6 +88,7 @@ export default function ChatWidget({
   onSessionExpired,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [seen, setSeen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     infographic.intro_message ? [{ role: "assistant", content: infographic.intro_message }] : []
@@ -99,6 +102,19 @@ export default function ChatWidget({
   const currentSessionId = useRef(sessionId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Voice input — 5-second hard cap (see VOICE_MAX_MS below). recorder/
+  // chunks/timer are refs, not state, since they're mutable handles that
+  // don't need to trigger a re-render on their own.
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [recordMs, setRecordMs] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voiceSupported =
+    typeof navigator !== "undefined" && !!navigator.mediaDevices && typeof MediaRecorder !== "undefined";
 
   const quickActions = useRef(buildQuickActions(report)).current;
   const chars = input.length;
@@ -251,6 +267,92 @@ export default function ChatWidget({
     }
   }
 
+  async function startRecording() {
+    if (recording || loading || outOfQuota) return;
+    setVoiceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Try a broadly-supported format first; browsers vary in which
+      // codecs they'll actually record with, so this falls back rather
+      // than hard-coding one MIME type that might not be supported.
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (recordTimerRef.current) {
+          clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        setRecording(false);
+        void handleRecordedAudio(mimeType || "audio/webm");
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordMs(0);
+
+      const startedAt = Date.now();
+      recordTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        setRecordMs(elapsed);
+        if (elapsed >= VOICE_MAX_MS) stopRecording();
+      }, 100);
+    } catch {
+      setVoiceError("Couldn't access your microphone — check permissions and try again.");
+    }
+  }
+
+  function stopRecording() {
+    // onstop (registered in startRecording) does the actual cleanup and
+    // upload — calling .stop() just triggers it, whether the user tapped
+    // the button early or the 5-second timer fired.
+    mediaRecorderRef.current?.stop();
+  }
+
+  async function handleRecordedAudio(mimeType: string) {
+    if (audioChunksRef.current.length === 0) return;
+    const blob = new Blob(audioChunksRef.current, { type: mimeType });
+    setTranscribing(true);
+    setVoiceError(null);
+    try {
+      const text = await transcribeAudio(currentSessionId.current, blob);
+      if (!text.trim()) {
+        setVoiceError("Didn't catch that — try speaking a bit louder or closer to the mic.");
+        return;
+      }
+      // Populated into the input, not auto-sent — the same 75-character
+      // limit applies to a transcribed message as a typed one, and the
+      // patient should get to see and edit what was heard before it
+      // costs them a question.
+      setInput(text.slice(0, MAX_CHARS + 20));
+      inputRef.current?.focus();
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : "Transcription failed — try typing instead.");
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  useEffect(() => {
+    // Belt-and-suspenders cleanup if the component unmounts mid-recording
+    // (e.g. the panel is closed) — stops the mic and the timer rather
+    // than leaving either running in the background.
+    return () => {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
   const unread = !seen && infographic.intro_message ? 1 : 0;
   const noUserTurnsYet = !messages.some((m) => m.role === "user");
   const depletionPct = quota > 0 ? Math.max(0, Math.min(100, (remaining / quota) * 100)) : 0;
@@ -277,10 +379,24 @@ export default function ChatWidget({
             <span className="chatfab__dot" aria-hidden="true" /> AI health companion
           </div>
         </div>
+        <button className="chathead__info" onClick={() => setShowInfo((v) => !v)} aria-label="How this chat works">
+          i
+        </button>
         <button className="chathead__close" onClick={() => setOpen(false)} aria-label="Close chat">
           ✕
         </button>
       </header>
+
+      {showInfo && (
+        <div className="infopanel" role="note">
+          <button className="infopanel__close" onClick={() => setShowInfo(false)} aria-label="Close">✕</button>
+          <ul className="infopanel__list">
+            <li>Each question can be up to <strong>{MAX_CHARS} characters</strong> — one focused question at a time.</li>
+            <li>Voice messages are capped at <strong>5 seconds</strong> — enough for one short question.</li>
+            <li>Every question uses one credit, <strong>including ones unrelated to your report</strong> — Dr. Gyan can only answer from your own results, so it's worth keeping questions on-topic.</li>
+          </ul>
+        </div>
+      )}
 
       {/* Prominent quota banner — the count and its depletion are meant
           to be seen at a glance, not buried in a status line. No plan
@@ -385,6 +501,8 @@ export default function ChatWidget({
         </div>
       )}
 
+      {voiceError && <div className="voiceerror">{voiceError}</div>}
+
       <div className="chatbar">
         <div className="chatbar__field">
           <input
@@ -392,8 +510,16 @@ export default function ChatWidget({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !overLimit && sendMessage(input)}
-            placeholder={outOfQuota ? "Get more questions to keep chatting" : "Ask about your report…"}
-            disabled={loading || outOfQuota}
+            placeholder={
+              outOfQuota
+                ? "Get more questions to keep chatting"
+                : recording
+                ? "Listening…"
+                : transcribing
+                ? "Transcribing…"
+                : "Ask about your report…"
+            }
+            disabled={loading || outOfQuota || recording || transcribing}
             aria-label="Message Dr. Gyan"
             maxLength={MAX_CHARS + 20}
           />
@@ -403,9 +529,30 @@ export default function ChatWidget({
             </span>
           )}
         </div>
+
+        {voiceSupported && (
+          <button
+            className={`micbtn ${recording ? "micbtn--active" : ""}`}
+            onClick={recording ? stopRecording : startRecording}
+            disabled={loading || outOfQuota || transcribing}
+            aria-label={recording ? "Stop recording" : "Ask by voice"}
+            title={recording ? "Stop recording" : "Ask by voice (5s max)"}
+          >
+            {recording ? (
+              <span className="micbtn__ring" style={{ "--pct": `${Math.min(100, (recordMs / VOICE_MAX_MS) * 100)}%` } as CSSProperties}>
+                ●
+              </span>
+            ) : transcribing ? (
+              "…"
+            ) : (
+              "🎤"
+            )}
+          </button>
+        )}
+
         <button
           onClick={() => sendMessage(input)}
-          disabled={loading || outOfQuota || !input.trim() || overLimit}
+          disabled={loading || outOfQuota || !input.trim() || overLimit || recording || transcribing}
           aria-label="Send message"
         >
           ➤
