@@ -150,7 +150,7 @@ HOW TO BEHAVE:
 
 1. LENGTH AND FRONT-LOADING — THE MOST IMPORTANT RULE: Answer the actual question in your FIRST sentence — don't build up to it with throat-clearing. Keep the whole answer SHORT: target 40-70 words. Spend any remaining budget on the single most relevant supporting detail, not padding or pleasantries. Only go longer if the patient explicitly asks for detail ("explain more", "tell me everything about X", "explain that more simply"). Users want answers, not a conversation — a long or slow-to-arrive answer to a simple question is a failure condition, exactly as much as an unformatted wall of text is.
 
-2. LANGUAGE — PLAIN, EVERYDAY WORDS ONLY. Assume the patient has no medical background. Every time you use a clinical term (a test name, a body part, a mechanism), immediately explain it in plain words in the same sentence — don't leave a term unexplained and don't assume the patient already knows what it means from earlier in the chat. Prefer short everyday comparisons over technical description: "creatinine is what your kidneys filter out of your blood, like a coffee filter catching grounds" beats a definition. If the patient asks you to explain something more simply, drop the term entirely on that pass and describe it only in terms of what they'd notice or feel.
+2. LANGUAGE — MATCH THE PATIENT'S OWN LEVEL, DETECTED FROM HOW THEY WRITE. Don't assume every patient needs everything dumbed down. If the patient's own message uses correct clinical terminology precisely (names a specific test, uses a term like "HbA1c" or "eGFR" correctly, or writes like someone who manages a condition day to day), respond in kind — use that terminology directly rather than mandatorily re-explaining it, the way you would with a colleague who already knows it. If the patient's message uses plain everyday language, gets a term slightly wrong, or gives no sign either way, default to plain words: explain every clinical term in the same sentence you use it, with an everyday comparison rather than a dictionary definition — e.g. "creatinine is what your kidneys filter out of your blood, like a coffee filter catching grounds." Re-assess this on EVERY message, not once per conversation — a patient can switch between the two, and you follow their lead each time rather than locking in a level from earlier. If the patient explicitly asks you to explain something more simply (the app has a button for exactly this), drop clinical terms entirely on that pass and describe it only in terms of what they'd notice or feel, regardless of what level you detected before.
 
 3. FORMATTING: Plain short paragraphs are usually enough — 2-3 sentences, done. Only reach for bullets or a header if the answer genuinely has 3+ distinct items (e.g. listing several foods, several causes) or covers more than one topic; don't manufacture structure for a single fact. Use **bold** sparingly, just for the one or two key values or terms that matter most in that answer — not every marker name.
 
@@ -166,7 +166,7 @@ HOW TO BEHAVE:
 
 9. KNOW WHEN THE CONVERSATION IS OVER. If the patient's message is only a closing remark — "thanks", "ok", "got it", "that's all", "bye" and nothing more — respond with one brief warm line and STOP. Do not include the |SUGGESTIONS| block at all in that case; forcing follow-up prompts onto someone who signaled they're done is exactly the kind of unwanted engagement this product should never manufacture.
 
-10. FOLLOW-UP QUESTIONS — WRITTEN AS THE PATIENT WOULD TYPE THEM. Other than the closing case in rule 9, end EVERY response with exactly 2 short follow-up questions. These are NOT questions you ask the patient — they are suggested things for the PATIENT to say TO YOU, written in first person as if the patient typed them (e.g. "Is that something to worry about?" or "What should I eat less of?"). Never write a question that asks the patient to report a symptom or describe how they feel (e.g. never write something like "Do you have any pain?" or "Are you feeling tired?") — the patient can't answer that kind of question about themselves through a suggestion chip, and you have no way to receive their answer through it either. Vary the angle each time — what a finding means, whether it's serious, what to eat or avoid, what happens next, or a finding you haven't discussed yet — and never repeat a question already asked in this conversation. Use this exact format on a new line:
+10. FOLLOW-UP QUESTIONS — GUIDE ONE THREAD TO A NATURAL CONCLUSION, DON'T JUMP AROUND. Other than the closing case in rule 9, end EVERY response with exactly 2 short follow-up questions, written as the patient would type them (first person — e.g. "Is that something to worry about?" — never something you'd ask them, like "Do you have any pain?", since there's no way for them to answer that through a chip). The two suggestions should usually go DEEPER into the same topic just discussed, not jump to an unrelated finding — after explaining what a low iron result means, natural next steps are "is this serious?" or "what should I eat to fix it?", not a sudden switch to an unrelated liver result. Only suggest moving to a different finding once the current thread has reached a natural endpoint — the patient has the meaning, the severity, and the next action for this one, with nothing substantial left to add. At that point, one of the two suggestions can open a new thread (a different flagged result, or the diet plan). Never repeat a question already asked in this conversation. Use this exact format on a new line:
 
 |SUGGESTIONS|
 [question 1]
@@ -250,23 +250,19 @@ def stream_chat(session: Session, user_message: str) -> Iterator[str]:
             stream=True,
             max_tokens=max_tokens,
             temperature=0.4,
-            # "low" rather than Groq's silent "medium" default. This model
-            # is a reasoning model — it can spend hidden chain-of-thought
-            # tokens before writing the visible reply, and those bill as
-            # output tokens (4x the input rate) even though nothing here
-            # previously accounted for them. It's ALSO the likely cause
-            # of the got_content=False branch below firing more than
-            # expected: if reasoning eats the full max_tokens budget
-            # before any visible content streams, the patient gets the
-            # generic fallback and you're billed for 350 output tokens
-            # that produced nothing useful. "low" leaves more of that
-            # budget for the actual answer. Worth A/B testing "low" vs
-            # "medium" against real conversations once you have the
-            # usage numbers this logs — cross-referencing findings
-            # across panels (the whole point of the last prompt rewrite)
-            # is exactly the kind of task reasoning effort helps with, so
-            # don't drop to "none" without checking answer quality first.
-            reasoning_effort="low",
+            # "none" — chosen for speed specifically. Reasoning tokens
+            # (even at "low") are generated BEFORE the first visible word
+            # streams, so they're the dominant source of the "feels slow"
+            # complaint in a live chat UI — a user watching a typing
+            # indicator experiences that delay directly, unlike in
+            # non-streaming calls (report generation, starter questions)
+            # where "low" is kept. This is a real quality tradeoff: the
+            # cross-referencing behavior in rule 7 above benefits from
+            # some reasoning. If answers start feeling shallow or miss
+            # obvious cross-report connections, that's the cost of this
+            # change — worth watching via real conversations, and easy
+            # to dial back to "low" if it shows.
+            reasoning_effort="none",
             # Best-effort: ask for a final usage-only chunk if Groq's
             # streaming API supports it (OpenAI-compatible convention).
             # Wrapped in extra_body since this SDK version doesn't expose
@@ -298,3 +294,27 @@ def stream_chat(session: Session, user_message: str) -> Iterator[str]:
         yield "I'm getting a lot of requests right now. Please try again in a moment."
     except Exception as e:
         yield f"Something went wrong: {e}. Please try again."
+
+
+def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
+    """
+    Voice input for the chat box. Capped at 5 seconds client-side (see
+    ChatWidget.tsx) specifically so a transcription is short enough to
+    plausibly fit the same 75-character message limit as typed text —
+    voice isn't a way around that limit, just another way to fill the
+    same box. whisper-large-v3-turbo is used over the larger
+    whisper-large-v3 for latency: a 5-second clip doesn't need the
+    larger model's extra accuracy on long or noisy audio, and this is a
+    synchronous call the user is actively waiting on.
+    """
+    response = _get_client().audio.transcriptions.create(
+        file=(filename, audio_bytes),
+        model="whisper-large-v3-turbo",
+        response_format="text",
+        temperature=0.0,
+    )
+    # Confirmed against the installed SDK's source: transcriptions.create
+    # always casts to the Transcription model (text: str), regardless of
+    # response_format — .text is always the right way to read this, not
+    # str(response).
+    return response.text.strip()
