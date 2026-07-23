@@ -250,19 +250,17 @@ def stream_chat(session: Session, user_message: str) -> Iterator[str]:
             stream=True,
             max_tokens=max_tokens,
             temperature=0.4,
-            # "none" — chosen for speed specifically. Reasoning tokens
-            # (even at "low") are generated BEFORE the first visible word
-            # streams, so they're the dominant source of the "feels slow"
-            # complaint in a live chat UI — a user watching a typing
-            # indicator experiences that delay directly, unlike in
-            # non-streaming calls (report generation, starter questions)
-            # where "low" is kept. This is a real quality tradeoff: the
-            # cross-referencing behavior in rule 7 above benefits from
-            # some reasoning. If answers start feeling shallow or miss
-            # obvious cross-report connections, that's the cost of this
-            # change — worth watching via real conversations, and easy
-            # to dial back to "low" if it shows.
-            reasoning_effort="none",
+            # "low" — NOT "none". Tried "none" for speed; Groq's live API
+            # rejected it outright for this model with a 400 ("must be
+            # one of 'low', 'medium', or 'high'") — the Python SDK's type
+            # hint lists "none" as valid (true for some other models),
+            # but this specific model's endpoint doesn't accept it. No
+            # network access from where this was written to catch that
+            # before it shipped; confirmed broken by a real user hitting
+            # it live. "low" is the actual floor for this model — real
+            # speed gains here would need a different, non-reasoning
+            # model rather than a parameter tweak.
+            reasoning_effort="low",
             # Best-effort: ask for a final usage-only chunk if Groq's
             # streaming API supports it (OpenAI-compatible convention).
             # Wrapped in extra_body since this SDK version doesn't expose
